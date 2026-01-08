@@ -17,10 +17,10 @@ import { useState } from 'react';
 
 const navItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
-  { title: 'Proposals', url: '/proposals', icon: FileText },
+  { title: 'Propostas', url: '/proposals', icon: FileText },
   { title: 'OKRs', url: '/okrs', icon: Target },
-  { title: 'Requests', url: '/requests', icon: Inbox },
-  { title: 'Settings', url: '/settings', icon: Settings },
+  { title: 'Solicitações', url: '/requests', icon: Inbox },
+  { title: 'Configurações', url: '/settings', icon: Settings },
 ];
 
 export function AppSidebar() {
@@ -41,6 +41,11 @@ export function AppSidebar() {
       return email[0].toUpperCase();
     }
     return 'U';
+  };
+
+  const getRoleLabel = (role: string | null) => {
+    if (role === 'admin') return 'Administrador';
+    return 'Membro';
   };
 
   return (
@@ -101,9 +106,9 @@ export function AppSidebar() {
           {!collapsed && (
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-foreground truncate">
-                {profile?.full_name || profile?.email || 'User'}
+                {profile?.full_name || profile?.email || 'Usuário'}
               </p>
-              <p className="text-xs text-muted-foreground capitalize">{role || 'Member'}</p>
+              <p className="text-xs text-muted-foreground">{getRoleLabel(role)}</p>
             </div>
           )}
           {!collapsed && (
@@ -112,6 +117,7 @@ export function AppSidebar() {
               size="icon"
               onClick={signOut}
               className="text-sidebar-foreground hover:text-destructive hover:bg-destructive/10"
+              title="Sair"
             >
               <LogOut className="h-4 w-4" />
             </Button>

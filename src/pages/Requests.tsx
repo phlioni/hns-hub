@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { Plus, Search, MoreHorizontal, Inbox, Trash2, Edit, History, User } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuditLog } from '@/hooks/useAuditLog';
@@ -19,15 +20,15 @@ import { toast } from 'sonner';
 import { Request as RequestType, RequestStatus, RequestPriority, Profile } from '@/types/database';
 
 const statusOptions: { value: RequestStatus; label: string }[] = [
-  { value: 'pending', label: 'Pending' },
-  { value: 'in_progress', label: 'In Progress' },
-  { value: 'done', label: 'Done' },
+  { value: 'pending', label: 'Pendente' },
+  { value: 'in_progress', label: 'Em Andamento' },
+  { value: 'done', label: 'Concluído' },
 ];
 
 const priorityOptions: { value: RequestPriority; label: string }[] = [
-  { value: 'low', label: 'Low' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'high', label: 'High' },
+  { value: 'low', label: 'Baixa' },
+  { value: 'medium', label: 'Média' },
+  { value: 'high', label: 'Alta' },
 ];
 
 export default function Requests() {
@@ -45,7 +46,7 @@ export default function Requests() {
   const [formData, setFormData] = useState({
     requester_name: '',
     description: '',
-    assignee_id: '',
+    assignee_id: 'unassigned',
     priority: 'medium' as RequestPriority,
   });
 
@@ -63,8 +64,8 @@ export default function Requests() {
       if (requestsRes.data) setRequests(requestsRes.data as RequestType[]);
       if (profilesRes.data) setProfiles(profilesRes.data as Profile[]);
     } catch (error) {
-      console.error('Error fetching data:', error);
-      toast.error('Failed to load requests');
+      console.error('Erro ao carregar dados:', error);
+      toast.error('Falha ao carregar solicitações');
     } finally {
       setLoading(false);
     }
@@ -72,7 +73,7 @@ export default function Requests() {
 
   const handleCreate = async () => {
     if (!formData.requester_name.trim() || !formData.description.trim()) {
-      toast.error('Requester name and description are required');
+      toast.error('Nome do solicitante e descrição são obrigatórios');
       return;
     }
 
@@ -82,7 +83,7 @@ export default function Requests() {
         .insert({
           requester_name: formData.requester_name,
           description: formData.description,
-          assignee_id: formData.assignee_id || null,
+          assignee_id: formData.assignee_id === 'unassigned' ? null : formData.assignee_id,
           priority: formData.priority,
         })
         .select()
@@ -98,12 +99,12 @@ export default function Requests() {
       });
 
       setRequests([data as RequestType, ...requests]);
-      setFormData({ requester_name: '', description: '', assignee_id: '', priority: 'medium' });
+      setFormData({ requester_name: '', description: '', assignee_id: 'unassigned', priority: 'medium' });
       setIsCreateOpen(false);
-      toast.success('Request created successfully');
+      toast.success('Solicitação criada com sucesso');
     } catch (error) {
-      console.error('Error creating request:', error);
-      toast.error('Failed to create request');
+      console.error('Erro ao criar solicitação:', error);
+      toast.error('Falha ao criar solicitação');
     }
   };
 
@@ -116,7 +117,7 @@ export default function Requests() {
         .update({
           requester_name: formData.requester_name,
           description: formData.description,
-          assignee_id: formData.assignee_id || null,
+          assignee_id: formData.assignee_id === 'unassigned' ? null : formData.assignee_id,
           priority: formData.priority,
         })
         .eq('id', editingRequest.id)
@@ -133,11 +134,11 @@ export default function Requests() {
 
       setRequests(requests.map(r => r.id === data.id ? data as RequestType : r));
       setEditingRequest(null);
-      setFormData({ requester_name: '', description: '', assignee_id: '', priority: 'medium' });
-      toast.success('Request updated successfully');
+      setFormData({ requester_name: '', description: '', assignee_id: 'unassigned', priority: 'medium' });
+      toast.success('Solicitação atualizada com sucesso');
     } catch (error) {
-      console.error('Error updating request:', error);
-      toast.error('Failed to update request');
+      console.error('Erro ao atualizar solicitação:', error);
+      toast.error('Falha ao atualizar solicitação');
     }
   };
 
@@ -163,10 +164,10 @@ export default function Requests() {
       });
 
       setRequests(requests.map(r => r.id === data.id ? data as RequestType : r));
-      toast.success('Status updated successfully');
+      toast.success('Status atualizado com sucesso');
     } catch (error) {
-      console.error('Error updating status:', error);
-      toast.error('Failed to update status');
+      console.error('Erro ao atualizar status:', error);
+      toast.error('Falha ao atualizar status');
     }
   };
 
@@ -182,10 +183,10 @@ export default function Requests() {
       });
 
       setRequests(requests.filter(r => r.id !== id));
-      toast.success('Request deleted successfully');
+      toast.success('Solicitação excluída com sucesso');
     } catch (error) {
-      console.error('Error deleting request:', error);
-      toast.error('Failed to delete request');
+      console.error('Erro ao excluir solicitação:', error);
+      toast.error('Falha ao excluir solicitação');
     }
   };
 
@@ -194,15 +195,15 @@ export default function Requests() {
     setFormData({
       requester_name: request.requester_name,
       description: request.description,
-      assignee_id: request.assignee_id || '',
+      assignee_id: request.assignee_id || 'unassigned',
       priority: request.priority,
     });
   };
 
   const getAssigneeName = (assigneeId: string | null) => {
-    if (!assigneeId) return '—';
+    if (!assigneeId) return 'Não atribuído';
     const profile = profiles.find(p => p.id === assigneeId);
-    return profile?.full_name || profile?.email || 'Unknown';
+    return profile?.full_name || profile?.email || 'Desconhecido';
   };
 
   // Filter requests
@@ -231,51 +232,51 @@ export default function Requests() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-in">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Requests</h1>
-            <p className="text-muted-foreground mt-1">Manage incoming requests and tickets</p>
+            <h1 className="text-3xl font-bold text-foreground">Solicitações</h1>
+            <p className="text-muted-foreground mt-1">Gerencie solicitações e tickets recebidos</p>
           </div>
           
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
               <Button className="btn-glow">
                 <Plus className="h-4 w-4 mr-2" />
-                New Request
+                Nova Solicitação
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-lg bg-card border-border">
               <DialogHeader>
-                <DialogTitle className="text-foreground">Create New Request</DialogTitle>
+                <DialogTitle className="text-foreground">Criar Nova Solicitação</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
-                  <Label htmlFor="requester">Requester Name *</Label>
+                  <Label htmlFor="requester">Nome do Solicitante *</Label>
                   <Input
                     id="requester"
                     value={formData.requester_name}
                     onChange={e => setFormData({ ...formData, requester_name: e.target.value })}
-                    placeholder="Who is making this request?"
+                    placeholder="Quem está fazendo esta solicitação?"
                     className="input-enhanced"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="description">Description *</Label>
+                  <Label htmlFor="description">Descrição *</Label>
                   <Textarea
                     id="description"
                     value={formData.description}
                     onChange={e => setFormData({ ...formData, description: e.target.value })}
-                    placeholder="Describe the request in detail"
+                    placeholder="Descreva a solicitação em detalhes"
                     className="input-enhanced min-h-[100px]"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="priority">Priority</Label>
+                    <Label htmlFor="priority">Prioridade</Label>
                     <Select
                       value={formData.priority}
                       onValueChange={(value) => setFormData({ ...formData, priority: value as RequestPriority })}
                     >
                       <SelectTrigger className="input-enhanced">
-                        <SelectValue placeholder="Select priority" />
+                        <SelectValue placeholder="Selecione a prioridade" />
                       </SelectTrigger>
                       <SelectContent>
                         {priorityOptions.map(option => (
@@ -285,16 +286,16 @@ export default function Requests() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="assignee">Assignee</Label>
+                    <Label htmlFor="assignee">Responsável</Label>
                     <Select
                       value={formData.assignee_id}
                       onValueChange={(value) => setFormData({ ...formData, assignee_id: value })}
                     >
                       <SelectTrigger className="input-enhanced">
-                        <SelectValue placeholder="Select assignee" />
+                        <SelectValue placeholder="Selecione o responsável" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Unassigned</SelectItem>
+                        <SelectItem value="unassigned">Não atribuído</SelectItem>
                         {profiles.map(profile => (
                           <SelectItem key={profile.id} value={profile.id}>
                             {profile.full_name || profile.email}
@@ -305,8 +306,8 @@ export default function Requests() {
                   </div>
                 </div>
                 <div className="flex justify-end gap-3 pt-4">
-                  <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
-                  <Button onClick={handleCreate} className="btn-glow">Create Request</Button>
+                  <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
+                  <Button onClick={handleCreate} className="btn-glow">Criar Solicitação</Button>
                 </div>
               </div>
             </DialogContent>
@@ -320,7 +321,7 @@ export default function Requests() {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search requests..."
+                  placeholder="Buscar solicitações..."
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
                   className="pl-10 input-enhanced"
@@ -331,7 +332,7 @@ export default function Requests() {
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="all">Todos os Status</SelectItem>
                   {statusOptions.map(option => (
                     <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
                   ))}
@@ -339,10 +340,10 @@ export default function Requests() {
               </Select>
               <Select value={priorityFilter} onValueChange={setPriorityFilter}>
                 <SelectTrigger className="w-full sm:w-40 input-enhanced">
-                  <SelectValue placeholder="Priority" />
+                  <SelectValue placeholder="Prioridade" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Priorities</SelectItem>
+                  <SelectItem value="all">Todas as Prioridades</SelectItem>
                   {priorityOptions.map(option => (
                     <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
                   ))}
@@ -357,13 +358,13 @@ export default function Requests() {
           <Table>
             <TableHeader>
               <TableRow className="border-border hover:bg-transparent">
-                <TableHead className="text-muted-foreground">Requester</TableHead>
-                <TableHead className="text-muted-foreground">Description</TableHead>
-                <TableHead className="text-muted-foreground">Priority</TableHead>
+                <TableHead className="text-muted-foreground">Solicitante</TableHead>
+                <TableHead className="text-muted-foreground">Descrição</TableHead>
+                <TableHead className="text-muted-foreground">Prioridade</TableHead>
                 <TableHead className="text-muted-foreground">Status</TableHead>
-                <TableHead className="text-muted-foreground">Assignee</TableHead>
-                <TableHead className="text-muted-foreground">Created</TableHead>
-                <TableHead className="text-muted-foreground text-right">Actions</TableHead>
+                <TableHead className="text-muted-foreground">Responsável</TableHead>
+                <TableHead className="text-muted-foreground">Criado em</TableHead>
+                <TableHead className="text-muted-foreground text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -371,7 +372,7 @@ export default function Requests() {
                 <TableRow>
                   <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
                     <Inbox className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p>No requests found</p>
+                    <p>Nenhuma solicitação encontrada</p>
                   </TableCell>
                 </TableRow>
               ) : (
@@ -400,7 +401,7 @@ export default function Requests() {
                         value={request.status}
                         onValueChange={(value) => handleStatusChange(request, value as RequestStatus)}
                       >
-                        <SelectTrigger className="w-32 border-0 bg-transparent p-0 h-auto focus:ring-0">
+                        <SelectTrigger className="w-36 border-0 bg-transparent p-0 h-auto focus:ring-0">
                           <StatusBadge status={request.status} />
                         </SelectTrigger>
                         <SelectContent>
@@ -414,7 +415,7 @@ export default function Requests() {
                       {getAssigneeName(request.assignee_id)}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {format(new Date(request.created_at), 'MMM d, yyyy')}
+                      {format(new Date(request.created_at), "d 'de' MMM, yyyy", { locale: ptBR })}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
@@ -436,14 +437,14 @@ export default function Requests() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => openEdit(request)}>
                               <Edit className="h-4 w-4 mr-2" />
-                              Edit
+                              Editar
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className="text-destructive focus:text-destructive"
                               onClick={() => handleDelete(request.id)}
                             >
                               <Trash2 className="h-4 w-4 mr-2" />
-                              Delete
+                              Excluir
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -460,11 +461,11 @@ export default function Requests() {
         <Dialog open={!!editingRequest} onOpenChange={() => setEditingRequest(null)}>
           <DialogContent className="sm:max-w-lg bg-card border-border">
             <DialogHeader>
-              <DialogTitle className="text-foreground">Edit Request</DialogTitle>
+              <DialogTitle className="text-foreground">Editar Solicitação</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label>Requester Name *</Label>
+                <Label>Nome do Solicitante *</Label>
                 <Input
                   value={formData.requester_name}
                   onChange={e => setFormData({ ...formData, requester_name: e.target.value })}
@@ -472,7 +473,7 @@ export default function Requests() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Description *</Label>
+                <Label>Descrição *</Label>
                 <Textarea
                   value={formData.description}
                   onChange={e => setFormData({ ...formData, description: e.target.value })}
@@ -481,7 +482,7 @@ export default function Requests() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Priority</Label>
+                  <Label>Prioridade</Label>
                   <Select
                     value={formData.priority}
                     onValueChange={(value) => setFormData({ ...formData, priority: value as RequestPriority })}
@@ -497,16 +498,16 @@ export default function Requests() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Assignee</Label>
+                  <Label>Responsável</Label>
                   <Select
                     value={formData.assignee_id}
                     onValueChange={(value) => setFormData({ ...formData, assignee_id: value })}
                   >
                     <SelectTrigger className="input-enhanced">
-                      <SelectValue placeholder="Select assignee" />
+                      <SelectValue placeholder="Selecione o responsável" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Unassigned</SelectItem>
+                      <SelectItem value="unassigned">Não atribuído</SelectItem>
                       {profiles.map(profile => (
                         <SelectItem key={profile.id} value={profile.id}>
                           {profile.full_name || profile.email}
@@ -517,8 +518,8 @@ export default function Requests() {
                 </div>
               </div>
               <div className="flex justify-end gap-3 pt-4">
-                <Button variant="outline" onClick={() => setEditingRequest(null)}>Cancel</Button>
-                <Button onClick={handleUpdate} className="btn-glow">Save Changes</Button>
+                <Button variant="outline" onClick={() => setEditingRequest(null)}>Cancelar</Button>
+                <Button onClick={handleUpdate} className="btn-glow">Salvar Alterações</Button>
               </div>
             </div>
           </DialogContent>

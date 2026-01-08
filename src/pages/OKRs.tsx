@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { format } from 'date-fns';
-import { Plus, Search, ChevronDown, ChevronRight, Target, MoreHorizontal, Trash2, Edit, CheckCircle2 } from 'lucide-react';
+import { ptBR } from 'date-fns/locale';
+import { Plus, Search, ChevronDown, ChevronRight, Target, MoreHorizontal, Trash2, CheckCircle2, Circle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuditLog } from '@/hooks/useAuditLog';
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -14,7 +15,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Slider } from '@/components/ui/slider';
 import { toast } from 'sonner';
 import { Objective, KeyResult, Initiative } from '@/types/database';
 import { cn } from '@/lib/utils';
@@ -69,16 +69,32 @@ export default function OKRs() {
         setInitiatives(initMap);
       }
     } catch (error) {
-      console.error('Error fetching data:', error);
-      toast.error('Failed to load OKRs');
+      console.error('Erro ao carregar dados:', error);
+      toast.error('Falha ao carregar OKRs');
     } finally {
       setLoading(false);
     }
   };
 
+  // Calculate KR progress based on initiatives
+  const calculateKRProgress = (krId: string): number => {
+    const krInitiatives = initiatives[krId] || [];
+    if (krInitiatives.length === 0) return 0;
+    const completed = krInitiatives.filter(i => i.completed).length;
+    return Math.round((completed / krInitiatives.length) * 100);
+  };
+
+  // Calculate Objective progress based on KRs
+  const calculateObjectiveProgress = (objectiveId: string): number => {
+    const objKRs = keyResults[objectiveId] || [];
+    if (objKRs.length === 0) return 0;
+    const totalProgress = objKRs.reduce((sum, kr) => sum + calculateKRProgress(kr.id), 0);
+    return Math.round(totalProgress / objKRs.length);
+  };
+
   const createObjective = async () => {
     if (!objectiveForm.title.trim()) {
-      toast.error('Title is required');
+      toast.error('Título é obrigatório');
       return;
     }
 
@@ -100,16 +116,16 @@ export default function OKRs() {
       setObjectives([data as Objective, ...objectives]);
       setObjectiveForm({ title: '', description: '' });
       setIsCreateOpen(false);
-      toast.success('Objective created successfully');
+      toast.success('Objetivo criado com sucesso');
     } catch (error) {
-      console.error('Error creating objective:', error);
-      toast.error('Failed to create objective');
+      console.error('Erro ao criar objetivo:', error);
+      toast.error('Falha ao criar objetivo');
     }
   };
 
   const createKeyResult = async (objectiveId: string) => {
     if (!krForm.title.trim()) {
-      toast.error('Title is required');
+      toast.error('Título é obrigatório');
       return;
     }
 
@@ -134,16 +150,16 @@ export default function OKRs() {
       });
       setKRForm({ title: '', description: '' });
       setIsCreateKROpen(null);
-      toast.success('Key Result created successfully');
+      toast.success('Resultado-Chave criado com sucesso');
     } catch (error) {
-      console.error('Error creating key result:', error);
-      toast.error('Failed to create key result');
+      console.error('Erro ao criar resultado-chave:', error);
+      toast.error('Falha ao criar resultado-chave');
     }
   };
 
   const createInitiative = async (keyResultId: string) => {
     if (!initiativeForm.title.trim()) {
-      toast.error('Title is required');
+      toast.error('Título é obrigatório');
       return;
     }
 
@@ -168,32 +184,10 @@ export default function OKRs() {
       });
       setInitiativeForm({ title: '', description: '' });
       setIsCreateInitiativeOpen(null);
-      toast.success('Initiative created successfully');
+      toast.success('Iniciativa criada com sucesso');
     } catch (error) {
-      console.error('Error creating initiative:', error);
-      toast.error('Failed to create initiative');
-    }
-  };
-
-  const updateProgress = async (type: 'objective' | 'key_result', id: string, progress: number) => {
-    try {
-      const table = type === 'objective' ? 'objectives' : 'key_results';
-      const { error } = await supabase.from(table).update({ progress }).eq('id', id);
-
-      if (error) throw error;
-
-      if (type === 'objective') {
-        setObjectives(objectives.map(o => o.id === id ? { ...o, progress } : o));
-      } else {
-        const updatedKRs = { ...keyResults };
-        Object.keys(updatedKRs).forEach(objId => {
-          updatedKRs[objId] = updatedKRs[objId].map(kr => kr.id === id ? { ...kr, progress } : kr);
-        });
-        setKeyResults(updatedKRs);
-      }
-    } catch (error) {
-      console.error('Error updating progress:', error);
-      toast.error('Failed to update progress');
+      console.error('Erro ao criar iniciativa:', error);
+      toast.error('Falha ao criar iniciativa');
     }
   };
 
@@ -206,6 +200,13 @@ export default function OKRs() {
 
       if (error) throw error;
 
+      await logAudit({
+        action: 'updated',
+        entityType: 'initiative',
+        entityId: initiative.id,
+        metadata: { completed: !initiative.completed },
+      });
+
       const updatedInits = { ...initiatives };
       Object.keys(updatedInits).forEach(krId => {
         updatedInits[krId] = updatedInits[krId].map(i => 
@@ -213,9 +214,11 @@ export default function OKRs() {
         );
       });
       setInitiatives(updatedInits);
+      
+      toast.success(initiative.completed ? 'Iniciativa reaberta' : 'Iniciativa concluída!');
     } catch (error) {
-      console.error('Error toggling initiative:', error);
-      toast.error('Failed to update initiative');
+      console.error('Erro ao atualizar iniciativa:', error);
+      toast.error('Falha ao atualizar iniciativa');
     }
   };
 
@@ -224,11 +227,61 @@ export default function OKRs() {
       const { error } = await supabase.from('objectives').delete().eq('id', id);
       if (error) throw error;
 
+      await logAudit({
+        action: 'deleted',
+        entityType: 'objective',
+        entityId: id,
+      });
+
       setObjectives(objectives.filter(o => o.id !== id));
-      toast.success('Objective deleted successfully');
+      toast.success('Objetivo excluído com sucesso');
     } catch (error) {
-      console.error('Error deleting objective:', error);
-      toast.error('Failed to delete objective');
+      console.error('Erro ao excluir objetivo:', error);
+      toast.error('Falha ao excluir objetivo');
+    }
+  };
+
+  const deleteKeyResult = async (krId: string, objectiveId: string) => {
+    try {
+      const { error } = await supabase.from('key_results').delete().eq('id', krId);
+      if (error) throw error;
+
+      await logAudit({
+        action: 'deleted',
+        entityType: 'key_result',
+        entityId: krId,
+      });
+
+      setKeyResults({
+        ...keyResults,
+        [objectiveId]: (keyResults[objectiveId] || []).filter(kr => kr.id !== krId),
+      });
+      toast.success('Resultado-Chave excluído com sucesso');
+    } catch (error) {
+      console.error('Erro ao excluir resultado-chave:', error);
+      toast.error('Falha ao excluir resultado-chave');
+    }
+  };
+
+  const deleteInitiative = async (initId: string, krId: string) => {
+    try {
+      const { error } = await supabase.from('initiatives').delete().eq('id', initId);
+      if (error) throw error;
+
+      await logAudit({
+        action: 'deleted',
+        entityType: 'initiative',
+        entityId: initId,
+      });
+
+      setInitiatives({
+        ...initiatives,
+        [krId]: (initiatives[krId] || []).filter(i => i.id !== initId),
+      });
+      toast.success('Iniciativa excluída com sucesso');
+    } catch (error) {
+      console.error('Erro ao excluir iniciativa:', error);
+      toast.error('Falha ao excluir iniciativa');
     }
   };
 
@@ -280,44 +333,44 @@ export default function OKRs() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-in">
           <div>
             <h1 className="text-3xl font-bold text-foreground">OKRs</h1>
-            <p className="text-muted-foreground mt-1">Track objectives and key results</p>
+            <p className="text-muted-foreground mt-1">Acompanhe objetivos e resultados-chave</p>
           </div>
           
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
               <Button className="btn-glow">
                 <Plus className="h-4 w-4 mr-2" />
-                New Objective
+                Novo Objetivo
               </Button>
             </DialogTrigger>
             <DialogContent className="bg-card border-border">
               <DialogHeader>
-                <DialogTitle className="text-foreground">Create New Objective</DialogTitle>
+                <DialogTitle className="text-foreground">Criar Novo Objetivo</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
-                  <Label htmlFor="obj-title">Title *</Label>
+                  <Label htmlFor="obj-title">Título *</Label>
                   <Input
                     id="obj-title"
                     value={objectiveForm.title}
                     onChange={e => setObjectiveForm({ ...objectiveForm, title: e.target.value })}
-                    placeholder="Enter objective title"
+                    placeholder="Digite o título do objetivo"
                     className="input-enhanced"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="obj-description">Description</Label>
+                  <Label htmlFor="obj-description">Descrição</Label>
                   <Textarea
                     id="obj-description"
                     value={objectiveForm.description}
                     onChange={e => setObjectiveForm({ ...objectiveForm, description: e.target.value })}
-                    placeholder="Brief description"
+                    placeholder="Breve descrição"
                     className="input-enhanced"
                   />
                 </div>
                 <div className="flex justify-end gap-3 pt-4">
-                  <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
-                  <Button onClick={createObjective} className="btn-glow">Create Objective</Button>
+                  <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
+                  <Button onClick={createObjective} className="btn-glow">Criar Objetivo</Button>
                 </div>
               </div>
             </DialogContent>
@@ -330,12 +383,21 @@ export default function OKRs() {
             <div className="relative max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search objectives..."
+                placeholder="Buscar objetivos..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
                 className="pl-10 input-enhanced"
               />
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Info Card */}
+        <Card className="glass-card border-info/30 bg-info/5">
+          <CardContent className="py-4">
+            <p className="text-sm text-muted-foreground">
+              💡 <strong>Como funciona:</strong> O progresso é calculado automaticamente. Complete as iniciativas e o progresso dos Resultados-Chave e Objetivos será atualizado automaticamente.
+            </p>
           </CardContent>
         </Card>
 
@@ -345,223 +407,255 @@ export default function OKRs() {
             <Card className="glass-card">
               <CardContent className="py-12 text-center">
                 <Target className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-                <p className="text-muted-foreground">No objectives found</p>
+                <p className="text-muted-foreground">Nenhum objetivo encontrado</p>
               </CardContent>
             </Card>
           ) : (
-            filteredObjectives.map((objective, index) => (
-              <Card
-                key={objective.id}
-                className="glass-card hover-card-animated animate-slide-up"
-                style={{ animationDelay: `${index * 50}ms` }}
-              >
-                <Collapsible open={expandedObjectives.has(objective.id)} onOpenChange={() => toggleObjective(objective.id)}>
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between gap-4">
-                      <CollapsibleTrigger className="flex items-center gap-3 text-left flex-1">
-                        {expandedObjectives.has(objective.id) ? (
-                          <ChevronDown className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                        ) : (
-                          <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                        )}
-                        <div className="flex-1">
-                          <CardTitle className="text-lg text-foreground">{objective.title}</CardTitle>
-                          {objective.description && (
-                            <p className="text-sm text-muted-foreground mt-1">{objective.description}</p>
+            filteredObjectives.map((objective, index) => {
+              const objectiveProgress = calculateObjectiveProgress(objective.id);
+              
+              return (
+                <Card
+                  key={objective.id}
+                  className="glass-card hover-card-animated animate-slide-up"
+                  style={{ animationDelay: `${index * 50}ms` }}
+                >
+                  <Collapsible open={expandedObjectives.has(objective.id)} onOpenChange={() => toggleObjective(objective.id)}>
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between gap-4">
+                        <CollapsibleTrigger className="flex items-center gap-3 text-left flex-1">
+                          {expandedObjectives.has(objective.id) ? (
+                            <ChevronDown className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                          ) : (
+                            <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                          )}
+                          <div className="flex-1">
+                            <CardTitle className="text-lg text-foreground">{objective.title}</CardTitle>
+                            {objective.description && (
+                              <p className="text-sm text-muted-foreground mt-1">{objective.description}</p>
+                            )}
+                          </div>
+                        </CollapsibleTrigger>
+                        <div className="flex items-center gap-3">
+                          <div className="w-32">
+                            <div className="flex items-center justify-between text-sm mb-1">
+                              <span className="text-muted-foreground">Progresso</span>
+                              <span className={cn(
+                                "font-medium",
+                                objectiveProgress >= 70 ? "text-success" : 
+                                objectiveProgress >= 40 ? "text-warning" : "text-info"
+                              )}>{objectiveProgress}%</span>
+                            </div>
+                            <Progress value={objectiveProgress} className="h-2" />
+                          </div>
+                          <AuditHistoryDrawer entityType="objective" entityId={objective.id} />
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => deleteObjective(objective.id)}
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Excluir
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </div>
+                    </CardHeader>
+
+                    <CollapsibleContent>
+                      <CardContent className="pt-4 border-t border-border ml-8">
+                        {/* Key Results */}
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-medium text-muted-foreground">Resultados-Chave</h4>
+                            <Dialog open={isCreateKROpen === objective.id} onOpenChange={(open) => setIsCreateKROpen(open ? objective.id : null)}>
+                              <DialogTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-8">
+                                  <Plus className="h-4 w-4 mr-1" />
+                                  Adicionar KR
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="bg-card border-border">
+                                <DialogHeader>
+                                  <DialogTitle className="text-foreground">Adicionar Resultado-Chave</DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-4 py-4">
+                                  <div className="space-y-2">
+                                    <Label>Título *</Label>
+                                    <Input
+                                      value={krForm.title}
+                                      onChange={e => setKRForm({ ...krForm, title: e.target.value })}
+                                      placeholder="Digite o título do resultado-chave"
+                                      className="input-enhanced"
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label>Descrição</Label>
+                                    <Textarea
+                                      value={krForm.description}
+                                      onChange={e => setKRForm({ ...krForm, description: e.target.value })}
+                                      placeholder="Breve descrição"
+                                      className="input-enhanced"
+                                    />
+                                  </div>
+                                  <div className="flex justify-end gap-3 pt-4">
+                                    <Button variant="outline" onClick={() => setIsCreateKROpen(null)}>Cancelar</Button>
+                                    <Button onClick={() => createKeyResult(objective.id)} className="btn-glow">Adicionar KR</Button>
+                                  </div>
+                                </div>
+                              </DialogContent>
+                            </Dialog>
+                          </div>
+
+                          {(keyResults[objective.id] || []).map(kr => {
+                            const krProgress = calculateKRProgress(kr.id);
+                            const krInitiatives = initiatives[kr.id] || [];
+                            
+                            return (
+                              <Collapsible key={kr.id} open={expandedKRs.has(kr.id)} onOpenChange={() => toggleKR(kr.id)}>
+                                <div className="p-4 rounded-lg bg-secondary/20 border border-border/50">
+                                  <div className="flex items-center justify-between">
+                                    <CollapsibleTrigger className="flex items-center gap-2 flex-1">
+                                      {expandedKRs.has(kr.id) ? (
+                                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                      ) : (
+                                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                                      )}
+                                      <span className="font-medium text-foreground">{kr.title}</span>
+                                    </CollapsibleTrigger>
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-24">
+                                        <Progress value={krProgress} className="h-1.5" />
+                                      </div>
+                                      <span className={cn(
+                                        "text-sm w-10 text-right font-medium",
+                                        krProgress >= 70 ? "text-success" : 
+                                        krProgress >= 40 ? "text-warning" : "text-muted-foreground"
+                                      )}>{krProgress}%</span>
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                          <Button variant="ghost" size="icon" className="h-7 w-7">
+                                            <MoreHorizontal className="h-3.5 w-3.5" />
+                                          </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                          <DropdownMenuItem
+                                            className="text-destructive focus:text-destructive"
+                                            onClick={() => deleteKeyResult(kr.id, objective.id)}
+                                          >
+                                            <Trash2 className="h-4 w-4 mr-2" />
+                                            Excluir
+                                          </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
+                                    </div>
+                                  </div>
+
+                                  <CollapsibleContent>
+                                    <div className="mt-4 pt-4 border-t border-border/50 space-y-3">
+                                      {/* Initiatives */}
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-xs font-medium text-muted-foreground">
+                                          Iniciativas ({krInitiatives.filter(i => i.completed).length}/{krInitiatives.length} concluídas)
+                                        </span>
+                                        <Dialog open={isCreateInitiativeOpen === kr.id} onOpenChange={(open) => setIsCreateInitiativeOpen(open ? kr.id : null)}>
+                                          <DialogTrigger asChild>
+                                            <Button variant="ghost" size="sm" className="h-6 text-xs">
+                                              <Plus className="h-3 w-3 mr-1" />
+                                              Adicionar
+                                            </Button>
+                                          </DialogTrigger>
+                                          <DialogContent className="bg-card border-border">
+                                            <DialogHeader>
+                                              <DialogTitle className="text-foreground">Adicionar Iniciativa</DialogTitle>
+                                            </DialogHeader>
+                                            <div className="space-y-4 py-4">
+                                              <div className="space-y-2">
+                                                <Label>Título *</Label>
+                                                <Input
+                                                  value={initiativeForm.title}
+                                                  onChange={e => setInitiativeForm({ ...initiativeForm, title: e.target.value })}
+                                                  placeholder="Digite o título da iniciativa"
+                                                  className="input-enhanced"
+                                                />
+                                              </div>
+                                              <div className="flex justify-end gap-3 pt-4">
+                                                <Button variant="outline" onClick={() => setIsCreateInitiativeOpen(null)}>Cancelar</Button>
+                                                <Button onClick={() => createInitiative(kr.id)} className="btn-glow">Adicionar Iniciativa</Button>
+                                              </div>
+                                            </div>
+                                          </DialogContent>
+                                        </Dialog>
+                                      </div>
+                                      
+                                      <div className="space-y-2">
+                                        {krInitiatives.map(initiative => (
+                                          <div
+                                            key={initiative.id}
+                                            className={cn(
+                                              'flex items-center gap-3 p-3 rounded-md text-sm transition-all duration-200 group',
+                                              initiative.completed 
+                                                ? 'bg-success/10 border border-success/20' 
+                                                : 'bg-secondary/30 border border-transparent hover:border-border'
+                                            )}
+                                          >
+                                            <button
+                                              onClick={() => toggleInitiativeComplete(initiative)}
+                                              className="flex-shrink-0 focus:outline-none"
+                                            >
+                                              {initiative.completed ? (
+                                                <CheckCircle2 className="h-5 w-5 text-success" />
+                                              ) : (
+                                                <Circle className="h-5 w-5 text-muted-foreground hover:text-primary transition-colors" />
+                                              )}
+                                            </button>
+                                            <span className={cn(
+                                              'flex-1',
+                                              initiative.completed ? 'text-muted-foreground line-through' : 'text-foreground'
+                                            )}>
+                                              {initiative.title}
+                                            </span>
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                              onClick={() => deleteInitiative(initiative.id, kr.id)}
+                                            >
+                                              <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                                            </Button>
+                                          </div>
+                                        ))}
+                                        
+                                        {krInitiatives.length === 0 && (
+                                          <p className="text-sm text-muted-foreground italic py-2 text-center">
+                                            Adicione iniciativas para acompanhar o progresso
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </CollapsibleContent>
+                                </div>
+                              </Collapsible>
+                            );
+                          })}
+
+                          {(!keyResults[objective.id] || keyResults[objective.id].length === 0) && (
+                            <p className="text-sm text-muted-foreground italic py-2">Nenhum resultado-chave ainda</p>
                           )}
                         </div>
-                      </CollapsibleTrigger>
-                      <div className="flex items-center gap-3">
-                        <div className="w-32">
-                          <div className="flex items-center justify-between text-sm mb-1">
-                            <span className="text-muted-foreground">Progress</span>
-                            <span className="font-medium text-foreground">{objective.progress}%</span>
-                          </div>
-                          <Progress value={objective.progress} className="h-2" />
-                        </div>
-                        <AuditHistoryDrawer entityType="objective" entityId={objective.id} />
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              onClick={() => deleteObjective(objective.id)}
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </div>
-                  </CardHeader>
-
-                  <CollapsibleContent>
-                    <CardContent className="pt-4 border-t border-border ml-8">
-                      {/* Progress Slider */}
-                      <div className="mb-6 p-4 rounded-lg bg-secondary/30">
-                        <Label className="text-sm text-muted-foreground mb-3 block">Adjust Progress</Label>
-                        <div className="flex items-center gap-4">
-                          <Slider
-                            value={[objective.progress]}
-                            onValueChange={([value]) => updateProgress('objective', objective.id, value)}
-                            max={100}
-                            step={1}
-                            className="flex-1"
-                          />
-                          <span className="w-12 text-right font-medium text-foreground">{objective.progress}%</span>
-                        </div>
-                      </div>
-
-                      {/* Key Results */}
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <h4 className="text-sm font-medium text-muted-foreground">Key Results</h4>
-                          <Dialog open={isCreateKROpen === objective.id} onOpenChange={(open) => setIsCreateKROpen(open ? objective.id : null)}>
-                            <DialogTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-8">
-                                <Plus className="h-4 w-4 mr-1" />
-                                Add KR
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent className="bg-card border-border">
-                              <DialogHeader>
-                                <DialogTitle className="text-foreground">Add Key Result</DialogTitle>
-                              </DialogHeader>
-                              <div className="space-y-4 py-4">
-                                <div className="space-y-2">
-                                  <Label>Title *</Label>
-                                  <Input
-                                    value={krForm.title}
-                                    onChange={e => setKRForm({ ...krForm, title: e.target.value })}
-                                    placeholder="Enter key result title"
-                                    className="input-enhanced"
-                                  />
-                                </div>
-                                <div className="space-y-2">
-                                  <Label>Description</Label>
-                                  <Textarea
-                                    value={krForm.description}
-                                    onChange={e => setKRForm({ ...krForm, description: e.target.value })}
-                                    placeholder="Brief description"
-                                    className="input-enhanced"
-                                  />
-                                </div>
-                                <div className="flex justify-end gap-3 pt-4">
-                                  <Button variant="outline" onClick={() => setIsCreateKROpen(null)}>Cancel</Button>
-                                  <Button onClick={() => createKeyResult(objective.id)} className="btn-glow">Add Key Result</Button>
-                                </div>
-                              </div>
-                            </DialogContent>
-                          </Dialog>
-                        </div>
-
-                        {(keyResults[objective.id] || []).map(kr => (
-                          <Collapsible key={kr.id} open={expandedKRs.has(kr.id)} onOpenChange={() => toggleKR(kr.id)}>
-                            <div className="p-4 rounded-lg bg-secondary/20 border border-border/50">
-                              <CollapsibleTrigger className="w-full">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    {expandedKRs.has(kr.id) ? (
-                                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                                    ) : (
-                                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                                    )}
-                                    <span className="font-medium text-foreground">{kr.title}</span>
-                                  </div>
-                                  <div className="flex items-center gap-3">
-                                    <div className="w-24">
-                                      <Progress value={kr.progress} className="h-1.5" />
-                                    </div>
-                                    <span className="text-sm text-muted-foreground w-10 text-right">{kr.progress}%</span>
-                                  </div>
-                                </div>
-                              </CollapsibleTrigger>
-
-                              <CollapsibleContent>
-                                <div className="mt-4 pt-4 border-t border-border/50 space-y-4">
-                                  {/* KR Progress Slider */}
-                                  <div className="flex items-center gap-4">
-                                    <Slider
-                                      value={[kr.progress]}
-                                      onValueChange={([value]) => updateProgress('key_result', kr.id, value)}
-                                      max={100}
-                                      step={1}
-                                      className="flex-1"
-                                    />
-                                    <span className="w-12 text-right text-sm font-medium text-foreground">{kr.progress}%</span>
-                                  </div>
-
-                                  {/* Initiatives */}
-                                  <div className="space-y-2">
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-xs font-medium text-muted-foreground">Initiatives</span>
-                                      <Dialog open={isCreateInitiativeOpen === kr.id} onOpenChange={(open) => setIsCreateInitiativeOpen(open ? kr.id : null)}>
-                                        <DialogTrigger asChild>
-                                          <Button variant="ghost" size="sm" className="h-6 text-xs">
-                                            <Plus className="h-3 w-3 mr-1" />
-                                            Add
-                                          </Button>
-                                        </DialogTrigger>
-                                        <DialogContent className="bg-card border-border">
-                                          <DialogHeader>
-                                            <DialogTitle className="text-foreground">Add Initiative</DialogTitle>
-                                          </DialogHeader>
-                                          <div className="space-y-4 py-4">
-                                            <div className="space-y-2">
-                                              <Label>Title *</Label>
-                                              <Input
-                                                value={initiativeForm.title}
-                                                onChange={e => setInitiativeForm({ ...initiativeForm, title: e.target.value })}
-                                                placeholder="Enter initiative title"
-                                                className="input-enhanced"
-                                              />
-                                            </div>
-                                            <div className="flex justify-end gap-3 pt-4">
-                                              <Button variant="outline" onClick={() => setIsCreateInitiativeOpen(null)}>Cancel</Button>
-                                              <Button onClick={() => createInitiative(kr.id)} className="btn-glow">Add Initiative</Button>
-                                            </div>
-                                          </div>
-                                        </DialogContent>
-                                      </Dialog>
-                                    </div>
-                                    
-                                    {(initiatives[kr.id] || []).map(initiative => (
-                                      <div
-                                        key={initiative.id}
-                                        className={cn(
-                                          'flex items-center gap-2 p-2 rounded-md text-sm cursor-pointer transition-colors',
-                                          initiative.completed ? 'bg-success/10 text-muted-foreground line-through' : 'bg-secondary/30 text-foreground'
-                                        )}
-                                        onClick={() => toggleInitiativeComplete(initiative)}
-                                      >
-                                        <CheckCircle2 className={cn(
-                                          'h-4 w-4 flex-shrink-0',
-                                          initiative.completed ? 'text-success' : 'text-muted-foreground'
-                                        )} />
-                                        <span>{initiative.title}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              </CollapsibleContent>
-                            </div>
-                          </Collapsible>
-                        ))}
-
-                        {(!keyResults[objective.id] || keyResults[objective.id].length === 0) && (
-                          <p className="text-sm text-muted-foreground italic py-2">No key results yet</p>
-                        )}
-                      </div>
-                    </CardContent>
-                  </CollapsibleContent>
-                </Collapsible>
-              </Card>
-            ))
+                      </CardContent>
+                    </CollapsibleContent>
+                  </Collapsible>
+                </Card>
+              );
+            })
           )}
         </div>
       </div>
