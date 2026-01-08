@@ -120,12 +120,12 @@ export default {
         "slide-in-right": "slide-in-right 0.3s ease-out",
       },
       backgroundImage: {
-        "gradient-primary": "linear-gradient(135deg, hsl(217 91% 60%) 0%, hsl(199 89% 48%) 100%)",
-        "gradient-card": "linear-gradient(180deg, hsl(222 47% 14%) 0%, hsl(222 47% 12%) 100%)",
+        "gradient-primary": "linear-gradient(135deg, #612cb5 0%, #8b5cf6 100%)",
+        "gradient-card": "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
       },
       boxShadow: {
-        glow: "0 0 20px hsl(217 91% 60% / 0.3)",
-        "glow-lg": "0 0 40px hsl(217 91% 60% / 0.4)",
+        glow: "0 0 15px rgba(97, 44, 181, 0.3)",
+        "glow-lg": "0 0 30px rgba(97, 44, 181, 0.4)",
       },
     },
   },

@@ -1,7 +1,5 @@
-import { useEffect, useState, useMemo } from 'react';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
-import { Plus, Search, ChevronDown, ChevronRight, Target, MoreHorizontal, Trash2, CheckCircle2, Circle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Plus, Search, ChevronDown, ChevronRight, MoreHorizontal, Trash2, CheckCircle2, Circle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuditLog } from '@/hooks/useAuditLog';
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -15,15 +13,23 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Objective, KeyResult, Initiative } from '@/types/database';
 import { cn } from '@/lib/utils';
+
+interface Profile {
+  id: string;
+  full_name: string;
+  email: string;
+}
 
 export default function OKRs() {
   const { logAudit } = useAuditLog();
   const [objectives, setObjectives] = useState<Objective[]>([]);
   const [keyResults, setKeyResults] = useState<Record<string, KeyResult[]>>({});
   const [initiatives, setInitiatives] = useState<Record<string, Initiative[]>>({});
+  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedObjectives, setExpandedObjectives] = useState<Set<string>>(new Set());
@@ -33,7 +39,7 @@ export default function OKRs() {
   const [isCreateInitiativeOpen, setIsCreateInitiativeOpen] = useState<string | null>(null);
 
   // Form state
-  const [objectiveForm, setObjectiveForm] = useState({ title: '', description: '' });
+  const [objectiveForm, setObjectiveForm] = useState({ title: '', description: '', owner_id: '', partner_id: '' });
   const [krForm, setKRForm] = useState({ title: '', description: '' });
   const [initiativeForm, setInitiativeForm] = useState({ title: '', description: '' });
 
@@ -43,14 +49,16 @@ export default function OKRs() {
 
   const fetchData = async () => {
     try {
-      const [objectivesRes, keyResultsRes, initiativesRes] = await Promise.all([
+      const [objectivesRes, keyResultsRes, initiativesRes, profilesRes] = await Promise.all([
         supabase.from('objectives').select('*').order('created_at', { ascending: false }),
         supabase.from('key_results').select('*').order('created_at', { ascending: true }),
         supabase.from('initiatives').select('*').order('created_at', { ascending: true }),
+        supabase.from('profiles').select('id, full_name, email'),
       ]);
 
       if (objectivesRes.data) setObjectives(objectivesRes.data as Objective[]);
-      
+      if (profilesRes.data) setProfiles(profilesRes.data as Profile[]);
+
       if (keyResultsRes.data) {
         const krMap: Record<string, KeyResult[]> = {};
         (keyResultsRes.data as KeyResult[]).forEach(kr => {
@@ -76,7 +84,6 @@ export default function OKRs() {
     }
   };
 
-  // Calculate KR progress based on initiatives
   const calculateKRProgress = (krId: string): number => {
     const krInitiatives = initiatives[krId] || [];
     if (krInitiatives.length === 0) return 0;
@@ -84,7 +91,6 @@ export default function OKRs() {
     return Math.round((completed / krInitiatives.length) * 100);
   };
 
-  // Calculate Objective progress based on KRs
   const calculateObjectiveProgress = (objectiveId: string): number => {
     const objKRs = keyResults[objectiveId] || [];
     if (objKRs.length === 0) return 0;
@@ -99,9 +105,17 @@ export default function OKRs() {
     }
 
     try {
+      const payload: any = {
+        title: objectiveForm.title,
+        description: objectiveForm.description
+      };
+
+      if (objectiveForm.owner_id) payload.owner_id = objectiveForm.owner_id;
+      if (objectiveForm.partner_id) payload.partner_id = objectiveForm.partner_id;
+
       const { data, error } = await supabase
         .from('objectives')
-        .insert({ title: objectiveForm.title, description: objectiveForm.description })
+        .insert(payload)
         .select()
         .single();
 
@@ -114,7 +128,7 @@ export default function OKRs() {
       });
 
       setObjectives([data as Objective, ...objectives]);
-      setObjectiveForm({ title: '', description: '' });
+      setObjectiveForm({ title: '', description: '', owner_id: '', partner_id: '' });
       setIsCreateOpen(false);
       toast.success('Objetivo criado com sucesso');
     } catch (error) {
@@ -209,12 +223,12 @@ export default function OKRs() {
 
       const updatedInits = { ...initiatives };
       Object.keys(updatedInits).forEach(krId => {
-        updatedInits[krId] = updatedInits[krId].map(i => 
+        updatedInits[krId] = updatedInits[krId].map(i =>
           i.id === initiative.id ? { ...i, completed: !i.completed } : i
         );
       });
       setInitiatives(updatedInits);
-      
+
       toast.success(initiative.completed ? 'Iniciativa reaberta' : 'Iniciativa concluída!');
     } catch (error) {
       console.error('Erro ao atualizar iniciativa:', error);
@@ -310,10 +324,10 @@ export default function OKRs() {
     obj.description?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const getProgressColor = (progress: number) => {
-    if (progress >= 70) return 'bg-success';
-    if (progress >= 40) return 'bg-warning';
-    return 'bg-info';
+  const getProfileName = (id?: string) => {
+    if (!id) return 'Não atribuído';
+    const profile = profiles.find(p => p.id === id);
+    return profile ? profile.full_name || profile.email : 'Desconhecido';
   };
 
   if (loading) {
@@ -335,10 +349,10 @@ export default function OKRs() {
             <h1 className="text-3xl font-bold text-foreground">OKRs</h1>
             <p className="text-muted-foreground mt-1">Acompanhe objetivos e resultados-chave</p>
           </div>
-          
+
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
-              <Button className="btn-glow">
+              <Button className="btn-glow bg-[#612cb5] hover:bg-[#502495] text-white">
                 <Plus className="h-4 w-4 mr-2" />
                 Novo Objetivo
               </Button>
@@ -368,9 +382,43 @@ export default function OKRs() {
                     className="input-enhanced"
                   />
                 </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Responsável (Owner)</Label>
+                    <Select
+                      value={objectiveForm.owner_id}
+                      onValueChange={v => setObjectiveForm({ ...objectiveForm, owner_id: v })}
+                    >
+                      <SelectTrigger className="input-enhanced">
+                        <SelectValue placeholder="Selecione..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {profiles.map(p => (
+                          <SelectItem key={p.id} value={p.id}>{p.full_name || p.email}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Parceiro (Partner)</Label>
+                    <Select
+                      value={objectiveForm.partner_id}
+                      onValueChange={v => setObjectiveForm({ ...objectiveForm, partner_id: v })}
+                    >
+                      <SelectTrigger className="input-enhanced">
+                        <SelectValue placeholder="Selecione..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {profiles.map(p => (
+                          <SelectItem key={p.id} value={p.id}>{p.full_name || p.email}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
                 <div className="flex justify-end gap-3 pt-4">
                   <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
-                  <Button onClick={createObjective} className="btn-glow">Criar Objetivo</Button>
+                  <Button onClick={createObjective} className="btn-glow bg-[#612cb5] text-white hover:bg-[#502495]">Criar Objetivo</Button>
                 </div>
               </div>
             </DialogContent>
@@ -406,14 +454,16 @@ export default function OKRs() {
           {filteredObjectives.length === 0 ? (
             <Card className="glass-card">
               <CardContent className="py-12 text-center">
-                <Target className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+                <div className="h-12 w-12 mx-auto mb-4 bg-secondary rounded-full flex items-center justify-center">
+                  <Search className="h-6 w-6 text-muted-foreground" />
+                </div>
                 <p className="text-muted-foreground">Nenhum objetivo encontrado</p>
               </CardContent>
             </Card>
           ) : (
             filteredObjectives.map((objective, index) => {
               const objectiveProgress = calculateObjectiveProgress(objective.id);
-              
+
               return (
                 <Card
                   key={objective.id}
@@ -423,28 +473,28 @@ export default function OKRs() {
                   <Collapsible open={expandedObjectives.has(objective.id)} onOpenChange={() => toggleObjective(objective.id)}>
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between gap-4">
-                        <CollapsibleTrigger className="flex items-center gap-3 text-left flex-1">
+                        <CollapsibleTrigger className="flex items-center gap-3 text-left flex-1 group">
                           {expandedObjectives.has(objective.id) ? (
-                            <ChevronDown className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                            <ChevronDown className="h-5 w-5 text-muted-foreground flex-shrink-0 group-hover:text-[#612cb5] transition-colors" />
                           ) : (
-                            <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                            <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0 group-hover:text-[#612cb5] transition-colors" />
                           )}
                           <div className="flex-1">
-                            <CardTitle className="text-lg text-foreground">{objective.title}</CardTitle>
+                            <CardTitle className="text-lg text-foreground group-hover:text-[#612cb5] transition-colors">{objective.title}</CardTitle>
                             {objective.description && (
                               <p className="text-sm text-muted-foreground mt-1">{objective.description}</p>
                             )}
+                            <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
+                              <span>Owner: <strong className="text-[#612cb5]">{getProfileName(objective.owner_id)}</strong></span>
+                              <span>Partner: <strong>{getProfileName(objective.partner_id)}</strong></span>
+                            </div>
                           </div>
                         </CollapsibleTrigger>
                         <div className="flex items-center gap-3">
-                          <div className="w-32">
+                          <div className="w-32 hidden sm:block">
                             <div className="flex items-center justify-between text-sm mb-1">
                               <span className="text-muted-foreground">Progresso</span>
-                              <span className={cn(
-                                "font-medium",
-                                objectiveProgress >= 70 ? "text-success" : 
-                                objectiveProgress >= 40 ? "text-warning" : "text-info"
-                              )}>{objectiveProgress}%</span>
+                              <span className="font-bold text-[#612cb5]">{objectiveProgress}%</span>
                             </div>
                             <Progress value={objectiveProgress} className="h-2" />
                           </div>
@@ -507,7 +557,7 @@ export default function OKRs() {
                                   </div>
                                   <div className="flex justify-end gap-3 pt-4">
                                     <Button variant="outline" onClick={() => setIsCreateKROpen(null)}>Cancelar</Button>
-                                    <Button onClick={() => createKeyResult(objective.id)} className="btn-glow">Adicionar KR</Button>
+                                    <Button onClick={() => createKeyResult(objective.id)} className="btn-glow bg-[#612cb5] text-white">Adicionar KR</Button>
                                   </div>
                                 </div>
                               </DialogContent>
@@ -517,10 +567,10 @@ export default function OKRs() {
                           {(keyResults[objective.id] || []).map(kr => {
                             const krProgress = calculateKRProgress(kr.id);
                             const krInitiatives = initiatives[kr.id] || [];
-                            
+
                             return (
                               <Collapsible key={kr.id} open={expandedKRs.has(kr.id)} onOpenChange={() => toggleKR(kr.id)}>
-                                <div className="p-4 rounded-lg bg-secondary/20 border border-border/50">
+                                <div className="p-4 rounded-lg bg-secondary/50 border border-border/50">
                                   <div className="flex items-center justify-between">
                                     <CollapsibleTrigger className="flex items-center gap-2 flex-1">
                                       {expandedKRs.has(kr.id) ? (
@@ -534,11 +584,7 @@ export default function OKRs() {
                                       <div className="w-24">
                                         <Progress value={krProgress} className="h-1.5" />
                                       </div>
-                                      <span className={cn(
-                                        "text-sm w-10 text-right font-medium",
-                                        krProgress >= 70 ? "text-success" : 
-                                        krProgress >= 40 ? "text-warning" : "text-muted-foreground"
-                                      )}>{krProgress}%</span>
+                                      <span className="text-sm w-10 text-right font-bold text-[#612cb5]">{krProgress}%</span>
                                       <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
                                           <Button variant="ghost" size="icon" className="h-7 w-7">
@@ -562,8 +608,8 @@ export default function OKRs() {
                                     <div className="mt-4 pt-4 border-t border-border/50 space-y-3">
                                       {/* Initiatives */}
                                       <div className="flex items-center justify-between">
-                                        <span className="text-xs font-medium text-muted-foreground">
-                                          Iniciativas ({krInitiatives.filter(i => i.completed).length}/{krInitiatives.length} concluídas)
+                                        <span className="text-xs font-bold uppercase text-muted-foreground">
+                                          Iniciativas ({krInitiatives.filter(i => i.completed).length}/{krInitiatives.length})
                                         </span>
                                         <Dialog open={isCreateInitiativeOpen === kr.id} onOpenChange={(open) => setIsCreateInitiativeOpen(open ? kr.id : null)}>
                                           <DialogTrigger asChild>
@@ -588,32 +634,29 @@ export default function OKRs() {
                                               </div>
                                               <div className="flex justify-end gap-3 pt-4">
                                                 <Button variant="outline" onClick={() => setIsCreateInitiativeOpen(null)}>Cancelar</Button>
-                                                <Button onClick={() => createInitiative(kr.id)} className="btn-glow">Adicionar Iniciativa</Button>
+                                                <Button onClick={() => createInitiative(kr.id)} className="btn-glow bg-[#612cb5] text-white">Adicionar Iniciativa</Button>
                                               </div>
                                             </div>
                                           </DialogContent>
                                         </Dialog>
                                       </div>
-                                      
+
                                       <div className="space-y-2">
                                         {krInitiatives.map(initiative => (
                                           <div
                                             key={initiative.id}
                                             className={cn(
-                                              'flex items-center gap-3 p-3 rounded-md text-sm transition-all duration-200 group',
-                                              initiative.completed 
-                                                ? 'bg-success/10 border border-success/20' 
-                                                : 'bg-secondary/30 border border-transparent hover:border-border'
+                                              'flex items-center gap-3 p-3 rounded-md text-sm transition-all duration-200 group bg-white border border-transparent hover:border-border shadow-sm',
                                             )}
                                           >
                                             <button
                                               onClick={() => toggleInitiativeComplete(initiative)}
-                                              className="flex-shrink-0 focus:outline-none"
+                                              className="flex-shrink-0 focus:outline-none transition-transform active:scale-95"
                                             >
                                               {initiative.completed ? (
                                                 <CheckCircle2 className="h-5 w-5 text-success" />
                                               ) : (
-                                                <Circle className="h-5 w-5 text-muted-foreground hover:text-primary transition-colors" />
+                                                <Circle className="h-5 w-5 text-muted-foreground hover:text-[#612cb5] transition-colors" />
                                               )}
                                             </button>
                                             <span className={cn(
@@ -632,10 +675,10 @@ export default function OKRs() {
                                             </Button>
                                           </div>
                                         ))}
-                                        
+
                                         {krInitiatives.length === 0 && (
-                                          <p className="text-sm text-muted-foreground italic py-2 text-center">
-                                            Adicione iniciativas para acompanhar o progresso
+                                          <p className="text-sm text-muted-foreground italic py-2 text-center bg-secondary/30 rounded">
+                                            Nenhuma iniciativa cadastrada
                                           </p>
                                         )}
                                       </div>
@@ -647,7 +690,7 @@ export default function OKRs() {
                           })}
 
                           {(!keyResults[objective.id] || keyResults[objective.id].length === 0) && (
-                            <p className="text-sm text-muted-foreground italic py-2">Nenhum resultado-chave ainda</p>
+                            <p className="text-sm text-muted-foreground italic py-2">Nenhum resultado-chave cadastrado</p>
                           )}
                         </div>
                       </CardContent>

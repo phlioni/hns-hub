@@ -1,19 +1,20 @@
+import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from './useAuth';
-
-type EntityType = 'proposal' | 'objective' | 'key_result' | 'initiative' | 'request';
+import { useAuth } from '@/hooks/useAuth';
+import { toast } from 'sonner';
 
 interface LogAuditParams {
   action: string;
-  entityType: EntityType;
+  entityType: string;
   entityId: string;
-  previousStatus?: string | null;
-  newStatus?: string | null;
-  metadata?: Record<string, any>;
+  previousStatus?: string;
+  newStatus?: string;
+  metadata?: Record<string, any>; // Permite passar { justification: "..." }
 }
 
 export function useAuditLog() {
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
+  const [isLogging, setIsLogging] = useState(false);
 
   const logAudit = async ({
     action,
@@ -21,27 +22,38 @@ export function useAuditLog() {
     entityId,
     previousStatus,
     newStatus,
-    metadata = {},
+    metadata = {}
   }: LogAuditParams) => {
+    setIsLogging(true);
     try {
+      // Tenta obter o nome do usuário, se não tiver, usa o email
+      const userName = user?.user_metadata?.full_name || user?.email || 'Sistema';
+
       const { error } = await supabase.from('audit_logs').insert({
         user_id: user?.id,
-        user_email: profile?.email || user?.email,
+        user_email: user?.email,
         action,
         entity_type: entityType,
         entity_id: entityId,
         previous_status: previousStatus,
         new_status: newStatus,
-        metadata,
+        metadata: {
+          ...metadata,
+          user_name: userName
+        }
       });
 
       if (error) {
-        console.error('Error logging audit:', error);
+        console.error('Erro ao gravar log de auditoria:', error);
+        // Não lançamos erro para o usuário não ser bloqueado por falha de log, 
+        // mas logamos no console.
       }
     } catch (error) {
-      console.error('Error logging audit:', error);
+      console.error('Erro interno ao gravar log:', error);
+    } finally {
+      setIsLogging(false);
     }
   };
 
-  return { logAudit };
+  return { logAudit, isLogging };
 }

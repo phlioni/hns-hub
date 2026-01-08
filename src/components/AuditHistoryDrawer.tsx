@@ -1,13 +1,30 @@
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { History, User, ArrowRight } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { AuditLog } from '@/types/database';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { Button } from '@/components/ui/button';
+import { History, User, FileText, ArrowRight, ShieldAlert } from 'lucide-react';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetTrigger,
+} from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Button } from '@/components/ui/button';
+import { supabase } from '@/integrations/supabase/client';
 import { StatusBadge } from '@/components/ui/status-badge';
+import { Skeleton } from '@/components/ui/skeleton';
+
+interface AuditLog {
+  id: string;
+  created_at: string;
+  user_email: string;
+  action: string;
+  previous_status: string | null;
+  new_status: string | null;
+  metadata: any; // JSONB
+}
 
 interface AuditHistoryDrawerProps {
   entityType: string;
@@ -17,14 +34,8 @@ interface AuditHistoryDrawerProps {
 
 export function AuditHistoryDrawer({ entityType, entityId, trigger }: AuditHistoryDrawerProps) {
   const [logs, setLogs] = useState<AuditLog[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    if (open) {
-      fetchLogs();
-    }
-  }, [open, entityType, entityId]);
+  const [loading, setLoading] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
 
   const fetchLogs = async () => {
     setLoading(true);
@@ -39,112 +50,121 @@ export function AuditHistoryDrawer({ entityType, entityId, trigger }: AuditHisto
       if (error) throw error;
       setLogs(data as AuditLog[]);
     } catch (error) {
-      console.error('Erro ao carregar logs de auditoria:', error);
+      console.error('Erro ao carregar histórico:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const getActionIcon = (action: string) => {
+  useEffect(() => {
+    if (isOpen) {
+      fetchLogs();
+    }
+  }, [isOpen, entityId]);
+
+  const getActionLabel = (action: string) => {
     switch (action) {
-      case 'created':
-        return <div className="w-2 h-2 rounded-full bg-success" />;
-      case 'updated':
-        return <div className="w-2 h-2 rounded-full bg-info" />;
-      case 'status_changed':
-        return <div className="w-2 h-2 rounded-full bg-warning" />;
-      case 'deleted':
-        return <div className="w-2 h-2 rounded-full bg-destructive" />;
-      default:
-        return <div className="w-2 h-2 rounded-full bg-muted-foreground" />;
+      case 'created': return 'Criado';
+      case 'updated': return 'Atualizado';
+      case 'deleted': return 'Excluído';
+      case 'status_changed': return 'Alteração de Status';
+      default: return action;
     }
   };
 
-  const formatAction = (action: string) => {
-    const actionMap: Record<string, string> = {
-      'created': 'Criado',
-      'updated': 'Atualizado',
-      'deleted': 'Excluído',
-      'status_changed': 'Status Alterado',
-    };
-    return actionMap[action] || action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-  };
-
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
+    <Sheet open={isOpen} onOpenChange={setIsOpen}>
       <SheetTrigger asChild>
         {trigger || (
-          <Button variant="ghost" size="sm" className="gap-2">
+          <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-[#612cb5]">
             <History className="h-4 w-4" />
-            Histórico
           </Button>
         )}
       </SheetTrigger>
-      <SheetContent className="w-full sm:max-w-md bg-card border-border">
-        <SheetHeader className="pb-4 border-b border-border">
-          <SheetTitle className="flex items-center gap-2 text-foreground">
-            <History className="h-5 w-5 text-primary" />
-            Histórico de Auditoria
+      <SheetContent className="w-[400px] sm:w-[540px]">
+        <SheetHeader className="mb-6">
+          <SheetTitle className="flex items-center gap-2 text-[#612cb5]">
+            <History className="h-5 w-5" />
+            Histórico de Alterações
           </SheetTitle>
+          <SheetDescription>
+            Registro completo de atividades e mudanças.
+          </SheetDescription>
         </SheetHeader>
+
         <ScrollArea className="h-[calc(100vh-120px)] pr-4">
           {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex gap-4">
+                  <Skeleton className="h-10 w-10 rounded-full" />
+                  <div className="space-y-2 flex-1">
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-2/3" />
+                  </div>
+                </div>
+              ))}
             </div>
           ) : logs.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <History className="h-12 w-12 text-muted-foreground/50 mb-4" />
-              <p className="text-muted-foreground">Nenhum histórico disponível</p>
+            <div className="text-center py-10 text-muted-foreground">
+              <FileText className="h-12 w-12 mx-auto mb-3 opacity-20" />
+              <p>Nenhum registro encontrado.</p>
             </div>
           ) : (
-            <div className="relative py-4">
-              {/* Timeline line */}
-              <div className="absolute left-[11px] top-0 bottom-0 w-px bg-border" />
-              
-              <div className="space-y-6">
-                {logs.map((log, index) => (
-                  <div key={log.id} className="relative flex gap-4 animate-slide-up" style={{ animationDelay: `${index * 50}ms` }}>
-                    {/* Timeline dot */}
-                    <div className="relative z-10 flex items-center justify-center w-6 h-6 rounded-full bg-card border border-border">
-                      {getActionIcon(log.action)}
+            <div className="relative border-l border-border ml-4 space-y-8">
+              {logs.map((log) => (
+                <div key={log.id} className="relative pl-8 group">
+                  {/* Timeline Dot */}
+                  <div className="absolute -left-[5px] top-1 h-2.5 w-2.5 rounded-full bg-border group-hover:bg-[#612cb5] transition-colors ring-4 ring-background" />
+
+                  <div className="flex flex-col gap-2">
+                    {/* Header: Action & Date */}
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-sm text-foreground">
+                        {getActionLabel(log.action)}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {format(new Date(log.created_at), "d 'de' MMM, HH:mm", { locale: ptBR })}
+                      </span>
                     </div>
-                    
-                    {/* Content */}
-                    <div className="flex-1 space-y-2 pb-4">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium text-foreground">
-                          {formatAction(log.action)}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {format(new Date(log.created_at), "d 'de' MMM, yyyy • HH:mm", { locale: ptBR })}
-                        </span>
+
+                    {/* User */}
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <User className="h-3 w-3" />
+                      <span>{log.metadata?.user_name || log.user_email || 'Sistema'}</span>
+                    </div>
+
+                    {/* Status Change Details */}
+                    {(log.previous_status || log.new_status) && (
+                      <div className="flex items-center gap-2 mt-1 p-2 bg-secondary/30 rounded-md border border-border/50">
+                        <StatusBadge status={log.previous_status as any} />
+                        <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                        <StatusBadge status={log.new_status as any} />
                       </div>
-                      
-                      {/* User info */}
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <User className="h-3.5 w-3.5" />
-                        <span>{log.user_email || 'Sistema'}</span>
-                      </div>
-                      
-                      {/* Status change */}
-                      {log.previous_status || log.new_status ? (
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {log.previous_status && (
-                            <StatusBadge status={log.previous_status as any} className="opacity-60" />
-                          )}
-                          {log.previous_status && log.new_status && (
-                            <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                          )}
-                          {log.new_status && (
-                            <StatusBadge status={log.new_status as any} />
-                          )}
+                    )}
+
+                    {/* JUSTIFICATION DISPLAY (New Logic) */}
+                    {log.metadata?.justification && (
+                      <div className="mt-2 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-md">
+                        <div className="flex items-center gap-2 mb-1 text-amber-700 dark:text-amber-400 font-medium text-xs">
+                          <ShieldAlert className="h-3 w-3" />
+                          <span>Justificativa</span>
                         </div>
-                      ) : null}
-                    </div>
+                        <p className="text-sm text-amber-900 dark:text-amber-100 italic">
+                          "{log.metadata.justification}"
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Other Metadata (Optional) */}
+                    {log.metadata && !log.metadata.justification && Object.keys(log.metadata).length > 0 && (
+                      <div className="mt-1">
+                        {/* Exibe outros metadados se necessário, exceto user_name que já mostramos */}
+                      </div>
+                    )}
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
           )}
         </ScrollArea>
