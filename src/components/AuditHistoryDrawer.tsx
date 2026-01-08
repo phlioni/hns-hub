@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
-import { History, User, ArrowRight, X } from 'lucide-react';
+import { ptBR } from 'date-fns/locale';
+import { History, User, ArrowRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { AuditLog } from '@/types/database';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { StatusBadge } from '@/components/ui/status-badge';
-import { cn } from '@/lib/utils';
 
 interface AuditHistoryDrawerProps {
   entityType: string;
@@ -39,7 +39,7 @@ export function AuditHistoryDrawer({ entityType, entityId, trigger }: AuditHisto
       if (error) throw error;
       setLogs(data as AuditLog[]);
     } catch (error) {
-      console.error('Error fetching audit logs:', error);
+      console.error('Erro ao carregar logs de auditoria:', error);
     } finally {
       setLoading(false);
     }
@@ -61,7 +61,13 @@ export function AuditHistoryDrawer({ entityType, entityId, trigger }: AuditHisto
   };
 
   const formatAction = (action: string) => {
-    return action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    const actionMap: Record<string, string> = {
+      'created': 'Criado',
+      'updated': 'Atualizado',
+      'deleted': 'Excluído',
+      'status_changed': 'Status Alterado',
+    };
+    return actionMap[action] || action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
   };
 
   return (
@@ -70,7 +76,7 @@ export function AuditHistoryDrawer({ entityType, entityId, trigger }: AuditHisto
         {trigger || (
           <Button variant="ghost" size="sm" className="gap-2">
             <History className="h-4 w-4" />
-            History
+            Histórico
           </Button>
         )}
       </SheetTrigger>
@@ -78,7 +84,7 @@ export function AuditHistoryDrawer({ entityType, entityId, trigger }: AuditHisto
         <SheetHeader className="pb-4 border-b border-border">
           <SheetTitle className="flex items-center gap-2 text-foreground">
             <History className="h-5 w-5 text-primary" />
-            Audit History
+            Histórico de Auditoria
           </SheetTitle>
         </SheetHeader>
         <ScrollArea className="h-[calc(100vh-120px)] pr-4">
@@ -89,7 +95,7 @@ export function AuditHistoryDrawer({ entityType, entityId, trigger }: AuditHisto
           ) : logs.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <History className="h-12 w-12 text-muted-foreground/50 mb-4" />
-              <p className="text-muted-foreground">No history available</p>
+              <p className="text-muted-foreground">Nenhum histórico disponível</p>
             </div>
           ) : (
             <div className="relative py-4">
@@ -111,14 +117,14 @@ export function AuditHistoryDrawer({ entityType, entityId, trigger }: AuditHisto
                           {formatAction(log.action)}
                         </span>
                         <span className="text-xs text-muted-foreground">
-                          {format(new Date(log.created_at), 'MMM d, yyyy • h:mm a')}
+                          {format(new Date(log.created_at), "d 'de' MMM, yyyy • HH:mm", { locale: ptBR })}
                         </span>
                       </div>
                       
                       {/* User info */}
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <User className="h-3.5 w-3.5" />
-                        <span>{log.user_email || 'System'}</span>
+                        <span>{log.user_email || 'Sistema'}</span>
                       </div>
                       
                       {/* Status change */}

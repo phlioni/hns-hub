@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
-import { Plus, Search, History, MoreHorizontal, FileText, Paperclip, Trash2, Edit } from 'lucide-react';
+import { ptBR } from 'date-fns/locale';
+import { Plus, Search, History, MoreHorizontal, FileText, Trash2, Edit } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useAuditLog } from '@/hooks/useAuditLog';
@@ -15,16 +16,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { Proposal, ProposalStatus } from '@/types/database';
 
 const statusOptions: { value: ProposalStatus; label: string }[] = [
-  { value: 'new', label: 'New' },
-  { value: 'understanding', label: 'Understanding' },
-  { value: 'construction', label: 'Construction' },
-  { value: 'cancelled', label: 'Cancelled' },
-  { value: 'delivered', label: 'Delivered' },
+  { value: 'new', label: 'Novo' },
+  { value: 'understanding', label: 'Entendimento' },
+  { value: 'construction', label: 'Construção' },
+  { value: 'cancelled', label: 'Cancelado' },
+  { value: 'delivered', label: 'Entregue' },
 ];
 
 export default function Proposals() {
@@ -59,8 +60,8 @@ export default function Proposals() {
       if (error) throw error;
       setProposals(data as Proposal[]);
     } catch (error) {
-      console.error('Error fetching proposals:', error);
-      toast.error('Failed to load proposals');
+      console.error('Erro ao carregar propostas:', error);
+      toast.error('Falha ao carregar propostas');
     } finally {
       setLoading(false);
     }
@@ -68,7 +69,7 @@ export default function Proposals() {
 
   const handleCreate = async () => {
     if (!formData.title.trim()) {
-      toast.error('Title is required');
+      toast.error('Título é obrigatório');
       return;
     }
 
@@ -97,10 +98,10 @@ export default function Proposals() {
       setProposals([data as Proposal, ...proposals]);
       setFormData({ title: '', description: '', pre_analysis: '', pre_proposal: '' });
       setIsCreateOpen(false);
-      toast.success('Proposal created successfully');
+      toast.success('Proposta criada com sucesso');
     } catch (error) {
-      console.error('Error creating proposal:', error);
-      toast.error('Failed to create proposal');
+      console.error('Erro ao criar proposta:', error);
+      toast.error('Falha ao criar proposta');
     }
   };
 
@@ -131,10 +132,10 @@ export default function Proposals() {
       setProposals(proposals.map(p => p.id === data.id ? data as Proposal : p));
       setEditingProposal(null);
       setFormData({ title: '', description: '', pre_analysis: '', pre_proposal: '' });
-      toast.success('Proposal updated successfully');
+      toast.success('Proposta atualizada com sucesso');
     } catch (error) {
-      console.error('Error updating proposal:', error);
-      toast.error('Failed to update proposal');
+      console.error('Erro ao atualizar proposta:', error);
+      toast.error('Falha ao atualizar proposta');
     }
   };
 
@@ -162,15 +163,15 @@ export default function Proposals() {
       setProposals(proposals.map(p => p.id === data.id ? data as Proposal : p));
       
       if (newStatus === 'delivered') {
-        toast.info('Triggering Delivery Email...', {
-          description: 'The delivery notification will be sent via webhook.',
+        toast.info('Disparando E-mail de Entrega...', {
+          description: 'A notificação de entrega será enviada via webhook.',
         });
       } else {
-        toast.success('Status updated successfully');
+        toast.success('Status atualizado com sucesso');
       }
     } catch (error) {
-      console.error('Error updating status:', error);
-      toast.error('Failed to update status');
+      console.error('Erro ao atualizar status:', error);
+      toast.error('Falha ao atualizar status');
     }
   };
 
@@ -186,10 +187,10 @@ export default function Proposals() {
       });
 
       setProposals(proposals.filter(p => p.id !== id));
-      toast.success('Proposal deleted successfully');
+      toast.success('Proposta excluída com sucesso');
     } catch (error) {
-      console.error('Error deleting proposal:', error);
-      toast.error('Failed to delete proposal');
+      console.error('Erro ao excluir proposta:', error);
+      toast.error('Falha ao excluir proposta');
     }
   };
 
@@ -227,65 +228,65 @@ export default function Proposals() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-in">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Proposals</h1>
-            <p className="text-muted-foreground mt-1">Manage your proposal pipeline</p>
+            <h1 className="text-3xl font-bold text-foreground">Propostas</h1>
+            <p className="text-muted-foreground mt-1">Gerencie o pipeline de propostas</p>
           </div>
           
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
               <Button className="btn-glow">
                 <Plus className="h-4 w-4 mr-2" />
-                New Proposal
+                Nova Proposta
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-2xl bg-card border-border">
               <DialogHeader>
-                <DialogTitle className="text-foreground">Create New Proposal</DialogTitle>
+                <DialogTitle className="text-foreground">Criar Nova Proposta</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
-                  <Label htmlFor="title">Title *</Label>
+                  <Label htmlFor="title">Título *</Label>
                   <Input
                     id="title"
                     value={formData.title}
                     onChange={e => setFormData({ ...formData, title: e.target.value })}
-                    placeholder="Enter proposal title"
+                    placeholder="Digite o título da proposta"
                     className="input-enhanced"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
+                  <Label htmlFor="description">Descrição</Label>
                   <Textarea
                     id="description"
                     value={formData.description}
                     onChange={e => setFormData({ ...formData, description: e.target.value })}
-                    placeholder="Brief description of the proposal"
+                    placeholder="Breve descrição da proposta"
                     className="input-enhanced min-h-[100px]"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="pre_analysis">Pre-Analysis</Label>
+                  <Label htmlFor="pre_analysis">Pré-Análise</Label>
                   <Textarea
                     id="pre_analysis"
                     value={formData.pre_analysis}
                     onChange={e => setFormData({ ...formData, pre_analysis: e.target.value })}
-                    placeholder="Initial analysis and findings"
+                    placeholder="Análise inicial e descobertas"
                     className="input-enhanced min-h-[120px]"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="pre_proposal">Pre-Proposal</Label>
+                  <Label htmlFor="pre_proposal">Pré-Proposta</Label>
                   <Textarea
                     id="pre_proposal"
                     value={formData.pre_proposal}
                     onChange={e => setFormData({ ...formData, pre_proposal: e.target.value })}
-                    placeholder="Preliminary proposal content"
+                    placeholder="Conteúdo preliminar da proposta"
                     className="input-enhanced min-h-[120px]"
                   />
                 </div>
                 <div className="flex justify-end gap-3 pt-4">
-                  <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
-                  <Button onClick={handleCreate} className="btn-glow">Create Proposal</Button>
+                  <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
+                  <Button onClick={handleCreate} className="btn-glow">Criar Proposta</Button>
                 </div>
               </div>
             </DialogContent>
@@ -299,7 +300,7 @@ export default function Proposals() {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search proposals..."
+                  placeholder="Buscar propostas..."
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
                   className="pl-10 input-enhanced"
@@ -307,10 +308,10 @@ export default function Proposals() {
               </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-full sm:w-48 input-enhanced">
-                  <SelectValue placeholder="Filter by status" />
+                  <SelectValue placeholder="Filtrar por status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="all">Todos os Status</SelectItem>
                   {statusOptions.map(option => (
                     <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
                   ))}
@@ -325,11 +326,11 @@ export default function Proposals() {
           <Table>
             <TableHeader>
               <TableRow className="border-border hover:bg-transparent">
-                <TableHead className="text-muted-foreground">Title</TableHead>
+                <TableHead className="text-muted-foreground">Título</TableHead>
                 <TableHead className="text-muted-foreground">Status</TableHead>
-                <TableHead className="text-muted-foreground">Entry Date</TableHead>
-                <TableHead className="text-muted-foreground">Delivery Date</TableHead>
-                <TableHead className="text-muted-foreground text-right">Actions</TableHead>
+                <TableHead className="text-muted-foreground">Data de Entrada</TableHead>
+                <TableHead className="text-muted-foreground">Data de Entrega</TableHead>
+                <TableHead className="text-muted-foreground text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -337,7 +338,7 @@ export default function Proposals() {
                 <TableRow>
                   <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
                     <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p>No proposals found</p>
+                    <p>Nenhuma proposta encontrada</p>
                   </TableCell>
                 </TableRow>
               ) : (
@@ -371,11 +372,11 @@ export default function Proposals() {
                       </Select>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {format(new Date(proposal.entry_date), 'MMM d, yyyy')}
+                      {format(new Date(proposal.entry_date), "d 'de' MMM, yyyy", { locale: ptBR })}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {proposal.delivery_date
-                        ? format(new Date(proposal.delivery_date), 'MMM d, yyyy')
+                        ? format(new Date(proposal.delivery_date), "d 'de' MMM, yyyy", { locale: ptBR })
                         : '—'}
                     </TableCell>
                     <TableCell className="text-right">
@@ -398,14 +399,14 @@ export default function Proposals() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => openEdit(proposal)}>
                               <Edit className="h-4 w-4 mr-2" />
-                              Edit
+                              Editar
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className="text-destructive focus:text-destructive"
                               onClick={() => handleDelete(proposal.id)}
                             >
                               <Trash2 className="h-4 w-4 mr-2" />
-                              Delete
+                              Excluir
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -422,11 +423,11 @@ export default function Proposals() {
         <Dialog open={!!editingProposal} onOpenChange={() => setEditingProposal(null)}>
           <DialogContent className="sm:max-w-2xl bg-card border-border">
             <DialogHeader>
-              <DialogTitle className="text-foreground">Edit Proposal</DialogTitle>
+              <DialogTitle className="text-foreground">Editar Proposta</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="edit-title">Title *</Label>
+                <Label htmlFor="edit-title">Título *</Label>
                 <Input
                   id="edit-title"
                   value={formData.title}
@@ -435,7 +436,7 @@ export default function Proposals() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-description">Description</Label>
+                <Label htmlFor="edit-description">Descrição</Label>
                 <Textarea
                   id="edit-description"
                   value={formData.description}
@@ -444,7 +445,7 @@ export default function Proposals() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-pre_analysis">Pre-Analysis</Label>
+                <Label htmlFor="edit-pre_analysis">Pré-Análise</Label>
                 <Textarea
                   id="edit-pre_analysis"
                   value={formData.pre_analysis}
@@ -453,7 +454,7 @@ export default function Proposals() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-pre_proposal">Pre-Proposal</Label>
+                <Label htmlFor="edit-pre_proposal">Pré-Proposta</Label>
                 <Textarea
                   id="edit-pre_proposal"
                   value={formData.pre_proposal}
@@ -462,8 +463,8 @@ export default function Proposals() {
                 />
               </div>
               <div className="flex justify-end gap-3 pt-4">
-                <Button variant="outline" onClick={() => setEditingProposal(null)}>Cancel</Button>
-                <Button onClick={handleUpdate} className="btn-glow">Save Changes</Button>
+                <Button variant="outline" onClick={() => setEditingProposal(null)}>Cancelar</Button>
+                <Button onClick={handleUpdate} className="btn-glow">Salvar Alterações</Button>
               </div>
             </div>
           </DialogContent>

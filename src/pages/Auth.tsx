@@ -12,12 +12,12 @@ import { Loader2, Mail, Lock, User, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const loginSchema = z.object({
-  email: z.string().email('Please enter a valid email'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  email: z.string().email('Por favor, digite um e-mail válido'),
+  password: z.string().min(6, 'A senha deve ter pelo menos 6 caracteres'),
 });
 
 const signupSchema = loginSchema.extend({
-  fullName: z.string().min(2, 'Name must be at least 2 characters'),
+  fullName: z.string().min(2, 'O nome deve ter pelo menos 2 caracteres'),
 });
 
 type LoginFormData = z.infer<typeof loginSchema>;
@@ -51,16 +51,16 @@ export default function Auth() {
       const { error } = await signIn(data.email, data.password);
       if (error) {
         if (error.message.includes('Invalid login')) {
-          toast.error('Invalid email or password');
+          toast.error('E-mail ou senha inválidos');
         } else {
           toast.error(error.message);
         }
       } else {
-        toast.success('Welcome back!');
+        toast.success('Bem-vindo de volta!');
         navigate('/');
       }
     } catch (error) {
-      toast.error('An unexpected error occurred');
+      toast.error('Ocorreu um erro inesperado');
     } finally {
       setLoading(false);
     }
@@ -72,16 +72,16 @@ export default function Auth() {
       const { error } = await signUp(data.email, data.password, data.fullName);
       if (error) {
         if (error.message.includes('already registered')) {
-          toast.error('This email is already registered. Please sign in.');
+          toast.error('Este e-mail já está cadastrado. Por favor, faça login.');
         } else {
           toast.error(error.message);
         }
       } else {
-        toast.success('Account created successfully!');
+        toast.success('Conta criada com sucesso!');
         navigate('/');
       }
     } catch (error) {
-      toast.error('An unexpected error occurred');
+      toast.error('Ocorreu um erro inesperado');
     } finally {
       setLoading(false);
     }
@@ -103,17 +103,17 @@ export default function Auth() {
           </div>
           
           <h1 className="text-4xl font-bold text-foreground mb-4 leading-tight">
-            Internal Management
+            Gestão Interna
             <br />
-            <span className="gradient-text">Reimagined</span>
+            <span className="gradient-text">Reimaginada</span>
           </h1>
           
           <p className="text-lg text-muted-foreground max-w-md">
-            Streamline your proposals, track OKRs, and manage requests with complete auditability. Built for high-performance teams.
+            Simplifique suas propostas, acompanhe OKRs e gerencie solicitações com total rastreabilidade. Desenvolvido para equipes de alta performance.
           </p>
 
           <div className="mt-12 space-y-4">
-            {['Proposals Pipeline', 'OKR Tracking', 'Request Management', 'Full Audit Trail'].map((feature, i) => (
+            {['Pipeline de Propostas', 'Acompanhamento de OKRs', 'Gestão de Solicitações', 'Trilha de Auditoria Completa'].map((feature, i) => (
               <div key={feature} className="flex items-center gap-3 text-muted-foreground animate-slide-up" style={{ animationDelay: `${i * 100}ms` }}>
                 <div className="w-1.5 h-1.5 rounded-full bg-primary" />
                 <span>{feature}</span>
@@ -136,10 +136,10 @@ export default function Auth() {
 
           <div className="text-center">
             <h2 className="text-2xl font-bold text-foreground">
-              {isLogin ? 'Welcome back' : 'Create your account'}
+              {isLogin ? 'Bem-vindo de volta' : 'Crie sua conta'}
             </h2>
             <p className="text-muted-foreground mt-2">
-              {isLogin ? 'Sign in to access your dashboard' : 'Get started with HNS Hub'}
+              {isLogin ? 'Entre para acessar seu painel' : 'Comece a usar o HNS Hub'}
             </p>
           </div>
 
@@ -153,7 +153,7 @@ export default function Auth() {
                 isLogin ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
               )}
             >
-              Sign In
+              Entrar
             </button>
             <button
               type="button"
@@ -163,7 +163,7 @@ export default function Auth() {
                 !isLogin ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
               )}
             >
-              Sign Up
+              Cadastrar
             </button>
           </div>
 
@@ -171,13 +171,13 @@ export default function Auth() {
           {isLogin ? (
             <form onSubmit={loginForm.handleSubmit(handleLogin)} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-foreground">Email</Label>
+                <Label htmlFor="email" className="text-foreground">E-mail</Label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="email"
                     type="email"
-                    placeholder="you@company.com"
+                    placeholder="seu@email.com"
                     className="pl-10 input-enhanced"
                     {...loginForm.register('email')}
                   />
@@ -188,7 +188,7 @@ export default function Auth() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password" className="text-foreground">Password</Label>
+                <Label htmlFor="password" className="text-foreground">Senha</Label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -209,7 +209,7 @@ export default function Auth() {
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <>
-                    Sign In
+                    Entrar
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </>
                 )}
@@ -218,13 +218,13 @@ export default function Auth() {
           ) : (
             <form onSubmit={signupForm.handleSubmit(handleSignup)} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="fullName" className="text-foreground">Full Name</Label>
+                <Label htmlFor="fullName" className="text-foreground">Nome Completo</Label>
                 <div className="relative">
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="fullName"
                     type="text"
-                    placeholder="John Doe"
+                    placeholder="João Silva"
                     className="pl-10 input-enhanced"
                     {...signupForm.register('fullName')}
                   />
@@ -235,13 +235,13 @@ export default function Auth() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="signup-email" className="text-foreground">Email</Label>
+                <Label htmlFor="signup-email" className="text-foreground">E-mail</Label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="signup-email"
                     type="email"
-                    placeholder="you@company.com"
+                    placeholder="seu@email.com"
                     className="pl-10 input-enhanced"
                     {...signupForm.register('email')}
                   />
@@ -252,7 +252,7 @@ export default function Auth() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="signup-password" className="text-foreground">Password</Label>
+                <Label htmlFor="signup-password" className="text-foreground">Senha</Label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -273,7 +273,7 @@ export default function Auth() {
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <>
-                    Create Account
+                    Criar Conta
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </>
                 )}
