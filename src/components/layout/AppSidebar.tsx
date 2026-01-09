@@ -60,10 +60,10 @@ export function AppSidebar() {
       <div className="h-16 flex items-center justify-between px-4 border-b border-sidebar-border">
         {!collapsed && (
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center">
-              <span className="text-sm font-bold text-primary-foreground">H</span>
+            <div className="w-16 h-8 rounded-lg bg-gradient-primary flex items-center justify-center">
+              <span className="text-sm font-bold text-primary-foreground">CCT</span>
             </div>
-            <span className="font-semibold text-foreground">HNS Hub</span>
+            <span className="font-semibold text-foreground">Centro de Controle e Transparência</span>
           </div>
         )}
         <Button

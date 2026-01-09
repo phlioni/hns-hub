@@ -97,9 +97,9 @@ export default function Auth() {
         <div className="relative z-10 flex flex-col justify-center px-16">
           <div className="flex items-center gap-3 mb-8">
             <div className="w-12 h-12 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow">
-              <span className="text-xl font-bold text-primary-foreground">H</span>
+              <span className="text-xl font-bold text-primary-foreground">CCT</span>
             </div>
-            <span className="text-2xl font-bold text-foreground">HNS Hub</span>
+            <span className="text-2xl font-bold text-foreground">Centro de Controle e Transparência</span>
           </div>
           
           <h1 className="text-4xl font-bold text-foreground mb-4 leading-tight">
@@ -129,9 +129,9 @@ export default function Auth() {
           {/* Mobile logo */}
           <div className="lg:hidden flex items-center justify-center gap-3 mb-8">
             <div className="w-10 h-10 rounded-xl bg-gradient-primary flex items-center justify-center">
-              <span className="text-lg font-bold text-primary-foreground">H</span>
+              <span className="text-lg font-bold text-primary-foreground">CCT</span>
             </div>
-            <span className="text-xl font-bold text-foreground">HNS Hub</span>
+            <span className="text-xl font-bold text-foreground">Centro de Controle e Transparência</span>
           </div>
 
           <div className="text-center">
@@ -139,7 +139,7 @@ export default function Auth() {
               {isLogin ? 'Bem-vindo de volta' : 'Crie sua conta'}
             </h2>
             <p className="text-muted-foreground mt-2">
-              {isLogin ? 'Entre para acessar seu painel' : 'Comece a usar o HNS Hub'}
+              {isLogin ? 'Entre para acessar seu painel' : 'Comece a usar o CCT'}
             </p>
           </div>
 

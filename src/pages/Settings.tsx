@@ -169,7 +169,7 @@ export default function Settings() {
           <CardContent>
             <div className="p-4 rounded-lg bg-secondary/30 border border-border">
               <p className="text-sm text-muted-foreground">
-                O HNS Hub está pronto para receber dados de ferramentas de automação externas como n8n. 
+                O CCT está pronto para receber dados de ferramentas de automação externas como n8n. 
                 Entre em contato com o administrador para configurar endpoints de webhook para:
               </p>
               <ul className="mt-3 space-y-2 text-sm">
