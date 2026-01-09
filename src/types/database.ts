@@ -29,8 +29,10 @@ export interface Proposal {
   pre_analysis: string | null;
   pre_proposal: string | null;
   attachments: any[];
+  links: { name: string; url: string }[];
   status: ProposalStatus;
   entry_date: string;
+  deadline: string | null;
   delivery_date: string | null;
   created_by: string | null;
   created_at: string;
@@ -79,6 +81,7 @@ export interface Request {
   assignee_id: string | null;
   priority: RequestPriority;
   status: RequestStatus;
+  attachments: any[]; // Novo campo
   created_at: string;
   updated_at: string;
 }

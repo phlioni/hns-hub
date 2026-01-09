@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Plus, Search, History, MoreHorizontal, FileText, Trash2, Edit, Paperclip, X } from 'lucide-react';
+import {
+  Plus, Search, History, MoreHorizontal, FileText, Trash2, Edit,
+  Paperclip, X, Link as LinkIcon, ExternalLink, Eye
+} from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useAuditLog } from '@/hooks/useAuditLog';
@@ -34,6 +37,11 @@ interface Attachment {
   type: string;
 }
 
+interface ExternalLinkItem {
+  name: string;
+  url: string;
+}
+
 export default function Proposals() {
   const { user } = useAuth();
   const { logAudit } = useAuditLog();
@@ -41,15 +49,20 @@ export default function Proposals() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+
+  // Modais
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingProposal, setEditingProposal] = useState<Proposal | null>(null);
+  const [viewingProposal, setViewingProposal] = useState<Proposal | null>(null);
 
   // Status Justification State
   const [pendingStatusChange, setPendingStatusChange] = useState<{ proposal: Proposal, newStatus: ProposalStatus } | null>(null);
   const [justification, setJustification] = useState('');
 
-  // Attachments State for Forms
+  // Attachments & Links State for Forms
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [links, setLinks] = useState<ExternalLinkItem[]>([]);
+  const [newLink, setNewLink] = useState({ name: '', url: '' });
   const [isUploading, setIsUploading] = useState(false);
 
   // Form state
@@ -58,6 +71,7 @@ export default function Proposals() {
     description: '',
     pre_analysis: '',
     pre_proposal: '',
+    deadline: '',
   });
 
   useEffect(() => {
@@ -111,6 +125,21 @@ export default function Proposals() {
     setAttachments(newAtt);
   };
 
+  const addLink = () => {
+    if (!newLink.name || !newLink.url) {
+      toast.error('Preencha nome e URL do link');
+      return;
+    }
+    setLinks([...links, newLink]);
+    setNewLink({ name: '', url: '' });
+  };
+
+  const removeLink = (index: number) => {
+    const newLnks = [...links];
+    newLnks.splice(index, 1);
+    setLinks(newLnks);
+  };
+
   const handleCreate = async () => {
     if (!formData.title.trim()) {
       toast.error('Título é obrigatório');
@@ -125,7 +154,9 @@ export default function Proposals() {
           description: formData.description,
           pre_analysis: formData.pre_analysis,
           pre_proposal: formData.pre_proposal,
+          deadline: formData.deadline || null,
           attachments: attachments,
+          links: links,
           created_by: user?.id,
         })
         .select()
@@ -137,12 +168,12 @@ export default function Proposals() {
         action: 'created',
         entityType: 'proposal',
         entityId: data.id,
+        entityTitle: data.title, // TITULO AQUI
         newStatus: 'new',
       });
 
       setProposals([data as Proposal, ...proposals]);
-      setFormData({ title: '', description: '', pre_analysis: '', pre_proposal: '' });
-      setAttachments([]);
+      resetForm();
       setIsCreateOpen(false);
       toast.success('Proposta criada com sucesso');
     } catch (error) {
@@ -162,7 +193,9 @@ export default function Proposals() {
           description: formData.description,
           pre_analysis: formData.pre_analysis,
           pre_proposal: formData.pre_proposal,
+          deadline: formData.deadline || null,
           attachments: attachments,
+          links: links,
         })
         .eq('id', editingProposal.id)
         .select()
@@ -174,12 +207,12 @@ export default function Proposals() {
         action: 'updated',
         entityType: 'proposal',
         entityId: data.id,
+        entityTitle: data.title, // TITULO AQUI
       });
 
       setProposals(proposals.map(p => p.id === data.id ? data as Proposal : p));
       setEditingProposal(null);
-      setFormData({ title: '', description: '', pre_analysis: '', pre_proposal: '' });
-      setAttachments([]);
+      resetForm();
       toast.success('Proposta atualizada com sucesso');
     } catch (error) {
       console.error('Erro ao atualizar proposta:', error);
@@ -187,17 +220,22 @@ export default function Proposals() {
     }
   };
 
+  const resetForm = () => {
+    setFormData({ title: '', description: '', pre_analysis: '', pre_proposal: '', deadline: '' });
+    setAttachments([]);
+    setLinks([]);
+    setNewLink({ name: '', url: '' });
+  };
+
   const handleStatusChangeRequest = (proposal: Proposal, newStatus: ProposalStatus) => {
     const previousStatus = proposal.status;
 
-    // Regra: Se estava 'delivered' e vai sair de 'delivered', exige justificativa
     if (previousStatus === 'delivered' && newStatus !== 'delivered') {
       setPendingStatusChange({ proposal, newStatus });
       setJustification('');
       return;
     }
 
-    // Caso normal
     executeStatusChange(proposal, newStatus);
   };
 
@@ -218,6 +256,7 @@ export default function Proposals() {
         action: 'status_changed',
         entityType: 'proposal',
         entityId: proposal.id,
+        entityTitle: proposal.title, // TITULO AQUI
         previousStatus,
         newStatus,
         metadata: justify ? { justification: justify } : undefined
@@ -238,6 +277,7 @@ export default function Proposals() {
   };
 
   const handleDelete = async (id: string) => {
+    const proposalToDelete = proposals.find(p => p.id === id); // Encontra antes de deletar
     try {
       const { error } = await supabase.from('proposals').delete().eq('id', id);
       if (error) throw error;
@@ -246,6 +286,7 @@ export default function Proposals() {
         action: 'deleted',
         entityType: 'proposal',
         entityId: id,
+        entityTitle: proposalToDelete?.title || 'Desconhecido', // TITULO AQUI
       });
 
       setProposals(proposals.filter(p => p.id !== id));
@@ -263,9 +304,11 @@ export default function Proposals() {
       description: proposal.description || '',
       pre_analysis: proposal.pre_analysis || '',
       pre_proposal: proposal.pre_proposal || '',
+      deadline: proposal.deadline ? new Date(proposal.deadline).toISOString().split('T')[0] : '',
     });
     // @ts-ignore
     setAttachments(proposal.attachments || []);
+    setLinks(proposal.links || []);
   };
 
   // Filter proposals
@@ -296,14 +339,14 @@ export default function Proposals() {
             <p className="text-muted-foreground mt-1">Gerencie o pipeline de propostas</p>
           </div>
 
-          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+          <Dialog open={isCreateOpen} onOpenChange={(open) => { setIsCreateOpen(open); if (!open) resetForm(); }}>
             <DialogTrigger asChild>
               <Button className="btn-glow bg-[#612cb5] hover:bg-[#502495] text-white">
                 <Plus className="h-4 w-4 mr-2" />
                 Nova Proposta
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-2xl bg-card border-border">
+            <DialogContent className="sm:max-w-2xl bg-card border-border max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle className="text-foreground">Criar Nova Proposta</DialogTitle>
               </DialogHeader>
@@ -317,6 +360,18 @@ export default function Proposals() {
                     placeholder="Digite o título da proposta"
                     className="input-enhanced"
                   />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="deadline">Prazo de Entrega</Label>
+                    <Input
+                      id="deadline"
+                      type="date"
+                      value={formData.deadline}
+                      onChange={e => setFormData({ ...formData, deadline: e.target.value })}
+                      className="input-enhanced"
+                    />
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="description">Descrição</Label>
@@ -349,16 +404,50 @@ export default function Proposals() {
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label>Anexos</Label>
+                {/* Links Section */}
+                <div className="space-y-2 bg-secondary/20 p-3 rounded-lg border border-border/50">
+                  <Label className="flex items-center gap-2 text-[#612cb5]"><LinkIcon className="h-4 w-4" /> Links Externos</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Nome do link (ex: Figma)"
+                      value={newLink.name}
+                      onChange={e => setNewLink({ ...newLink, name: e.target.value })}
+                      className="flex-1 input-enhanced h-9 text-sm"
+                    />
+                    <Input
+                      placeholder="URL (https://...)"
+                      value={newLink.url}
+                      onChange={e => setNewLink({ ...newLink, url: e.target.value })}
+                      className="flex-[2] input-enhanced h-9 text-sm"
+                    />
+                    <Button onClick={addLink} size="sm" variant="secondary" className="h-9">Adicionar</Button>
+                  </div>
+                  {links.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {links.map((link, idx) => (
+                        <div key={idx} className="flex items-center gap-1 bg-background px-3 py-1.5 rounded-md text-xs border border-border shadow-sm">
+                          <ExternalLink className="h-3 w-3 text-primary" />
+                          <a href={link.url} target="_blank" rel="noopener noreferrer" className="hover:underline text-primary truncate max-w-[150px]">
+                            {link.name}
+                          </a>
+                          <button onClick={() => removeLink(idx)} className="hover:text-destructive transition-colors ml-1"><X className="h-3 w-3" /></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Attachments Section */}
+                <div className="space-y-2 bg-secondary/20 p-3 rounded-lg border border-border/50">
+                  <Label className="flex items-center gap-2 text-[#612cb5]"><Paperclip className="h-4 w-4" /> Arquivos Anexos</Label>
                   <div className="flex items-center gap-2">
-                    <Input type="file" onChange={handleFileUpload} disabled={isUploading} className="text-sm input-enhanced" />
+                    <Input type="file" onChange={handleFileUpload} disabled={isUploading} className="text-sm input-enhanced h-9" />
                     {isUploading && <span className="text-xs text-muted-foreground animate-pulse">Enviando...</span>}
                   </div>
                   <div className="flex flex-wrap gap-2 mt-2">
                     {attachments.map((att, idx) => (
-                      <div key={idx} className="flex items-center gap-1 bg-secondary px-3 py-1.5 rounded-md text-xs border border-border">
-                        <Paperclip className="h-3 w-3 text-primary" />
+                      <div key={idx} className="flex items-center gap-1 bg-background px-3 py-1.5 rounded-md text-xs border border-border shadow-sm">
+                        <FileText className="h-3 w-3 text-muted-foreground" />
                         <span className="max-w-[150px] truncate">{att.name}</span>
                         <button onClick={() => removeAttachment(idx)} className="hover:text-destructive transition-colors ml-1"><X className="h-3 w-3" /></button>
                       </div>
@@ -410,7 +499,8 @@ export default function Proposals() {
               <TableRow className="border-border hover:bg-transparent">
                 <TableHead className="text-muted-foreground">Título</TableHead>
                 <TableHead className="text-muted-foreground">Status</TableHead>
-                <TableHead className="text-muted-foreground">Anexos</TableHead>
+                <TableHead className="text-muted-foreground">Docs</TableHead>
+                <TableHead className="text-muted-foreground">Prazo</TableHead>
                 <TableHead className="text-muted-foreground">Data de Entrada</TableHead>
                 <TableHead className="text-muted-foreground">Data de Entrega</TableHead>
                 <TableHead className="text-muted-foreground text-right">Ações</TableHead>
@@ -419,7 +509,7 @@ export default function Proposals() {
             <TableBody>
               {filteredProposals.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
                     <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
                     <p>Nenhuma proposta encontrada</p>
                   </TableCell>
@@ -428,8 +518,9 @@ export default function Proposals() {
                 filteredProposals.map((proposal, index) => (
                   <TableRow
                     key={proposal.id}
-                    className="border-border data-table-row animate-slide-up"
+                    className="border-border data-table-row animate-slide-up cursor-pointer hover:bg-muted/30 transition-colors"
                     style={{ animationDelay: `${index * 30}ms` }}
+                    onClick={() => setViewingProposal(proposal)}
                   >
                     <TableCell>
                       <div>
@@ -439,7 +530,7 @@ export default function Proposals() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       <Select
                         value={proposal.status}
                         onValueChange={(value) => handleStatusChangeRequest(proposal, value as ProposalStatus)}
@@ -455,23 +546,41 @@ export default function Proposals() {
                       </Select>
                     </TableCell>
                     <TableCell>
-                      {/* @ts-ignore */}
-                      {(proposal.attachments && proposal.attachments.length > 0) ? (
-                        <div className="flex items-center gap-1 text-muted-foreground text-xs bg-secondary/50 px-2 py-1 rounded w-fit">
-                          <Paperclip className="h-3 w-3" /> <span className="font-medium">{(proposal.attachments as any[]).length}</span>
-                        </div>
-                      ) : <span className="text-muted-foreground text-xs pl-2">-</span>}
+                      <div className="flex gap-2">
+                        {/* @ts-ignore */}
+                        {(proposal.attachments && proposal.attachments.length > 0) && (
+                          <div className="flex items-center gap-1 text-muted-foreground text-xs bg-secondary/50 px-2 py-1 rounded w-fit" title={`${proposal.attachments.length} anexos`}>
+                            <Paperclip className="h-3 w-3" /> <span className="font-medium">{proposal.attachments.length}</span>
+                          </div>
+                        )}
+                        {(proposal.links && proposal.links.length > 0) && (
+                          <div className="flex items-center gap-1 text-[#612cb5] text-xs bg-[#612cb5]/10 px-2 py-1 rounded w-fit" title={`${proposal.links.length} links`}>
+                            <LinkIcon className="h-3 w-3" /> <span className="font-medium">{proposal.links.length}</span>
+                          </div>
+                        )}
+                        {!proposal.attachments?.length && !proposal.links?.length && <span className="text-muted-foreground text-xs pl-2">-</span>}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-foreground font-medium">
+                      {proposal.deadline ? (
+                        <span className={new Date(proposal.deadline) < new Date() && proposal.status !== 'delivered' ? 'text-destructive' : ''}>
+                          {format(new Date(proposal.deadline), "dd/MM/yyyy")}
+                        </span>
+                      ) : '—'}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {format(new Date(proposal.entry_date), "d 'de' MMM, yyyy", { locale: ptBR })}
+                      {format(new Date(proposal.entry_date), "dd/MM/yyyy", { locale: ptBR })}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {proposal.delivery_date
-                        ? format(new Date(proposal.delivery_date), "d 'de' MMM, yyyy", { locale: ptBR })
+                        ? format(new Date(proposal.delivery_date), "dd/MM/yyyy", { locale: ptBR })
                         : '—'}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1">
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => setViewingProposal(proposal)} title="Visualizar">
+                          <Eye className="h-4 w-4" />
+                        </Button>
                         <AuditHistoryDrawer
                           entityType="proposal"
                           entityId={proposal.id}
@@ -510,6 +619,87 @@ export default function Proposals() {
           </Table>
         </Card>
 
+        {/* View Details Dialog */}
+        <Dialog open={!!viewingProposal} onOpenChange={() => setViewingProposal(null)}>
+          <DialogContent className="sm:max-w-2xl bg-card border-border max-h-[85vh] overflow-y-auto">
+            <DialogHeader className="border-b border-border pb-4">
+              <div className="flex justify-between items-start">
+                <div>
+                  <DialogTitle className="text-xl text-[#612cb5] mb-1">{viewingProposal?.title}</DialogTitle>
+                  {viewingProposal && <StatusBadge status={viewingProposal.status} />}
+                </div>
+                <div className="text-right text-xs text-muted-foreground space-y-1">
+                  <div>Entrada: {viewingProposal && format(new Date(viewingProposal.entry_date), "dd/MM/yyyy")}</div>
+                  <div>Prazo: {viewingProposal?.deadline ? format(new Date(viewingProposal.deadline), "dd/MM/yyyy") : 'Não definido'}</div>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <div className="space-y-6 py-4">
+              {viewingProposal?.description && (
+                <div>
+                  <h4 className="font-semibold text-sm text-foreground mb-1">Descrição</h4>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{viewingProposal.description}</p>
+                </div>
+              )}
+
+              {viewingProposal?.pre_analysis && (
+                <div className="bg-secondary/20 p-3 rounded-lg">
+                  <h4 className="font-semibold text-sm text-foreground mb-1">Pré-Análise</h4>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{viewingProposal.pre_analysis}</p>
+                </div>
+              )}
+
+              {viewingProposal?.pre_proposal && (
+                <div className="bg-secondary/20 p-3 rounded-lg">
+                  <h4 className="font-semibold text-sm text-foreground mb-1">Pré-Proposta</h4>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{viewingProposal.pre_proposal}</p>
+                </div>
+              )}
+
+              {/* Docs & Links Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                {viewingProposal?.links && viewingProposal.links.length > 0 && (
+                  <div className="border border-border rounded-lg p-3">
+                    <h4 className="font-semibold text-xs text-[#612cb5] uppercase mb-2 flex items-center gap-1"><LinkIcon className="h-3 w-3" /> Links</h4>
+                    <ul className="space-y-1">
+                      {viewingProposal.links.map((link, idx) => (
+                        <li key={idx} className="text-sm truncate">
+                          <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1">
+                            <ExternalLink className="h-3 w-3" /> {link.name}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* @ts-ignore */}
+                {viewingProposal?.attachments && viewingProposal.attachments.length > 0 && (
+                  <div className="border border-border rounded-lg p-3">
+                    <h4 className="font-semibold text-xs text-[#612cb5] uppercase mb-2 flex items-center gap-1"><Paperclip className="h-3 w-3" /> Anexos</h4>
+                    <ul className="space-y-1">
+                      {/* @ts-ignore */}
+                      {viewingProposal.attachments.map((att, idx) => (
+                        <li key={idx} className="text-sm truncate">
+                          <a href={att.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1">
+                            <FileText className="h-3 w-3" /> {att.name}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <DialogFooter className="border-t border-border pt-4">
+              <Button variant="outline" onClick={() => setViewingProposal(null)}>Fechar</Button>
+              <Button onClick={() => { setViewingProposal(null); if (viewingProposal) openEdit(viewingProposal); }} className="bg-[#612cb5] text-white">Editar</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* Justification Dialog for Regression from Delivered */}
         <Dialog open={!!pendingStatusChange} onOpenChange={(open) => !open && setPendingStatusChange(null)}>
           <DialogContent className="bg-card">
@@ -542,7 +732,7 @@ export default function Proposals() {
 
         {/* Edit Dialog */}
         <Dialog open={!!editingProposal} onOpenChange={() => setEditingProposal(null)}>
-          <DialogContent className="sm:max-w-2xl bg-card border-border">
+          <DialogContent className="sm:max-w-2xl bg-card border-border max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-foreground">Editar Proposta</DialogTitle>
             </DialogHeader>
@@ -555,6 +745,18 @@ export default function Proposals() {
                   onChange={e => setFormData({ ...formData, title: e.target.value })}
                   className="input-enhanced"
                 />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-deadline">Prazo de Entrega</Label>
+                  <Input
+                    id="edit-deadline"
+                    type="date"
+                    value={formData.deadline}
+                    onChange={e => setFormData({ ...formData, deadline: e.target.value })}
+                    className="input-enhanced"
+                  />
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="edit-description">Descrição</Label>
@@ -584,19 +786,50 @@ export default function Proposals() {
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label>Anexos</Label>
+              {/* Edit Links Section */}
+              <div className="space-y-2 bg-secondary/20 p-3 rounded-lg border border-border/50">
+                <Label className="flex items-center gap-2 text-[#612cb5]"><LinkIcon className="h-4 w-4" /> Links Externos</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Nome do link"
+                    value={newLink.name}
+                    onChange={e => setNewLink({ ...newLink, name: e.target.value })}
+                    className="flex-1 input-enhanced h-9 text-sm"
+                  />
+                  <Input
+                    placeholder="URL"
+                    value={newLink.url}
+                    onChange={e => setNewLink({ ...newLink, url: e.target.value })}
+                    className="flex-[2] input-enhanced h-9 text-sm"
+                  />
+                  <Button onClick={addLink} size="sm" variant="secondary" className="h-9">Adicionar</Button>
+                </div>
+                {links.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {links.map((link, idx) => (
+                      <div key={idx} className="flex items-center gap-1 bg-background px-3 py-1.5 rounded-md text-xs border border-border shadow-sm">
+                        <ExternalLink className="h-3 w-3 text-primary" />
+                        <a href={link.url} target="_blank" rel="noopener noreferrer" className="hover:underline text-primary truncate max-w-[150px]">
+                          {link.name}
+                        </a>
+                        <button onClick={() => removeLink(idx)} className="hover:text-destructive transition-colors ml-1"><X className="h-3 w-3" /></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2 bg-secondary/20 p-3 rounded-lg border border-border/50">
+                <Label className="flex items-center gap-2 text-[#612cb5]"><Paperclip className="h-4 w-4" /> Arquivos Anexos</Label>
                 <div className="flex items-center gap-2">
-                  <Input type="file" onChange={handleFileUpload} disabled={isUploading} className="text-sm input-enhanced" />
+                  <Input type="file" onChange={handleFileUpload} disabled={isUploading} className="text-sm input-enhanced h-9" />
                   {isUploading && <span className="text-xs text-muted-foreground animate-pulse">Enviando...</span>}
                 </div>
                 <div className="flex flex-wrap gap-2 mt-2">
                   {attachments.map((att, idx) => (
-                    <div key={idx} className="flex items-center gap-1 bg-secondary px-3 py-1.5 rounded-md text-xs border border-border">
-                      <a href={att.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:underline text-primary">
-                        <Paperclip className="h-3 w-3" />
-                        <span className="max-w-[150px] truncate">{att.name}</span>
-                      </a>
+                    <div key={idx} className="flex items-center gap-1 bg-background px-3 py-1.5 rounded-md text-xs border border-border shadow-sm">
+                      <FileText className="h-3 w-3 text-muted-foreground" />
+                      <span className="max-w-[150px] truncate">{att.name}</span>
                       <button onClick={() => removeAttachment(idx)} className="hover:text-destructive transition-colors ml-1"><X className="h-3 w-3" /></button>
                     </div>
                   ))}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Search, ChevronDown, ChevronRight, MoreHorizontal, Trash2, CheckCircle2, Circle } from 'lucide-react';
+import { Plus, Search, ChevronDown, ChevronRight, MoreHorizontal, Trash2, CheckCircle2, Circle, Edit, Pencil } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuditLog } from '@/hooks/useAuditLog';
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Progress } from '@/components/ui/progress';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -34,11 +34,18 @@ export default function OKRs() {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedObjectives, setExpandedObjectives] = useState<Set<string>>(new Set());
   const [expandedKRs, setExpandedKRs] = useState<Set<string>>(new Set());
+
+  // Create States
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isCreateKROpen, setIsCreateKROpen] = useState<string | null>(null);
   const [isCreateInitiativeOpen, setIsCreateInitiativeOpen] = useState<string | null>(null);
 
-  // Form state
+  // Edit States
+  const [editingObjective, setEditingObjective] = useState<Objective | null>(null);
+  const [editingKR, setEditingKR] = useState<KeyResult | null>(null);
+  const [editingInitiative, setEditingInitiative] = useState<Initiative | null>(null);
+
+  // Forms
   const [objectiveForm, setObjectiveForm] = useState({ title: '', description: '', owner_id: '', partner_id: '' });
   const [krForm, setKRForm] = useState({ title: '', description: '' });
   const [initiativeForm, setInitiativeForm] = useState({ title: '', description: '' });
@@ -98,6 +105,8 @@ export default function OKRs() {
     return Math.round(totalProgress / objKRs.length);
   };
 
+  // --- CRUD OPERATIONS: CREATE ---
+
   const createObjective = async () => {
     if (!objectiveForm.title.trim()) {
       toast.error('Título é obrigatório');
@@ -109,22 +118,14 @@ export default function OKRs() {
         title: objectiveForm.title,
         description: objectiveForm.description
       };
-
       if (objectiveForm.owner_id) payload.owner_id = objectiveForm.owner_id;
       if (objectiveForm.partner_id) payload.partner_id = objectiveForm.partner_id;
 
-      const { data, error } = await supabase
-        .from('objectives')
-        .insert(payload)
-        .select()
-        .single();
-
+      const { data, error } = await supabase.from('objectives').insert(payload).select().single();
       if (error) throw error;
 
       await logAudit({
-        action: 'created',
-        entityType: 'objective',
-        entityId: data.id,
+        action: 'created', entityType: 'objective', entityId: data.id, entityTitle: data.title // TITULO 
       });
 
       setObjectives([data as Objective, ...objectives]);
@@ -147,27 +148,20 @@ export default function OKRs() {
       const { data, error } = await supabase
         .from('key_results')
         .insert({ objective_id: objectiveId, title: krForm.title, description: krForm.description })
-        .select()
-        .single();
-
+        .select().single();
       if (error) throw error;
 
       await logAudit({
-        action: 'created',
-        entityType: 'key_result',
-        entityId: data.id,
+        action: 'created', entityType: 'key_result', entityId: data.id, entityTitle: data.title // TITULO 
       });
 
-      setKeyResults({
-        ...keyResults,
-        [objectiveId]: [...(keyResults[objectiveId] || []), data as KeyResult],
-      });
+      setKeyResults({ ...keyResults, [objectiveId]: [...(keyResults[objectiveId] || []), data as KeyResult] });
       setKRForm({ title: '', description: '' });
       setIsCreateKROpen(null);
-      toast.success('Resultado-Chave criado com sucesso');
+      toast.success('KR criado com sucesso');
     } catch (error) {
-      console.error('Erro ao criar resultado-chave:', error);
-      toast.error('Falha ao criar resultado-chave');
+      console.error('Erro ao criar KR:', error);
+      toast.error('Falha ao criar KR');
     }
   };
 
@@ -181,27 +175,117 @@ export default function OKRs() {
       const { data, error } = await supabase
         .from('initiatives')
         .insert({ key_result_id: keyResultId, title: initiativeForm.title, description: initiativeForm.description })
-        .select()
-        .single();
-
+        .select().single();
       if (error) throw error;
 
       await logAudit({
-        action: 'created',
-        entityType: 'initiative',
-        entityId: data.id,
+        action: 'created', entityType: 'initiative', entityId: data.id, entityTitle: data.title // TITULO 
       });
 
-      setInitiatives({
-        ...initiatives,
-        [keyResultId]: [...(initiatives[keyResultId] || []), data as Initiative],
-      });
+      setInitiatives({ ...initiatives, [keyResultId]: [...(initiatives[keyResultId] || []), data as Initiative] });
       setInitiativeForm({ title: '', description: '' });
       setIsCreateInitiativeOpen(null);
       toast.success('Iniciativa criada com sucesso');
     } catch (error) {
       console.error('Erro ao criar iniciativa:', error);
       toast.error('Falha ao criar iniciativa');
+    }
+  };
+
+  // --- CRUD OPERATIONS: UPDATE ---
+
+  const handleUpdateObjective = async () => {
+    if (!editingObjective || !objectiveForm.title.trim()) return;
+
+    try {
+      const payload: any = {
+        title: objectiveForm.title,
+        description: objectiveForm.description,
+        owner_id: objectiveForm.owner_id || null,
+        partner_id: objectiveForm.partner_id || null
+      };
+
+      const { data, error } = await supabase
+        .from('objectives')
+        .update(payload)
+        .eq('id', editingObjective.id)
+        .select()
+        .single();
+      if (error) throw error;
+
+      await logAudit({
+        action: 'updated', entityType: 'objective', entityId: data.id, entityTitle: data.title // TITULO 
+      });
+
+      setObjectives(objectives.map(o => o.id === data.id ? data as Objective : o));
+      setEditingObjective(null);
+      setObjectiveForm({ title: '', description: '', owner_id: '', partner_id: '' });
+      toast.success('Objetivo atualizado com sucesso');
+    } catch (error) {
+      console.error('Erro ao atualizar objetivo:', error);
+      toast.error('Falha ao atualizar objetivo');
+    }
+  };
+
+  const handleUpdateKR = async () => {
+    if (!editingKR || !krForm.title.trim()) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('key_results')
+        .update({ title: krForm.title, description: krForm.description })
+        .eq('id', editingKR.id)
+        .select()
+        .single();
+      if (error) throw error;
+
+      await logAudit({
+        action: 'updated', entityType: 'key_result', entityId: data.id, entityTitle: data.title // TITULO 
+      });
+
+      const updatedKRs = { ...keyResults };
+      Object.keys(updatedKRs).forEach(objId => {
+        updatedKRs[objId] = updatedKRs[objId].map(kr => kr.id === data.id ? data as KeyResult : kr);
+      });
+      setKeyResults(updatedKRs);
+
+      setEditingKR(null);
+      setKRForm({ title: '', description: '' });
+      toast.success('KR atualizado com sucesso');
+    } catch (error) {
+      console.error('Erro ao atualizar KR:', error);
+      toast.error('Falha ao atualizar KR');
+    }
+  };
+
+  const handleUpdateInitiative = async () => {
+    if (!editingInitiative || !initiativeForm.title.trim()) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('initiatives')
+        .update({ title: initiativeForm.title, description: initiativeForm.description })
+        .eq('id', editingInitiative.id)
+        .select()
+        .single();
+      if (error) throw error;
+
+      await logAudit({
+        action: 'updated', entityType: 'initiative', entityId: data.id, entityTitle: data.title // TITULO 
+      });
+
+      const updatedInits = { ...initiatives };
+      Object.keys(updatedInits).forEach(krId => {
+        updatedInits[krId] = updatedInits[krId].map(i => i.id === data.id ? data as Initiative : i);
+      });
+      setInitiatives(updatedInits);
+
+      setEditingInitiative(null);
+      setInitiativeForm({ title: '', description: '' });
+      toast.success('Iniciativa atualizada com sucesso');
+    } catch (error) {
+      console.error('Erro ao atualizar iniciativa:', error);
+      toast.error('Falha ao atualizar iniciativa');
     }
   };
 
@@ -218,6 +302,7 @@ export default function OKRs() {
         action: 'updated',
         entityType: 'initiative',
         entityId: initiative.id,
+        entityTitle: initiative.title, // TITULO
         metadata: { completed: !initiative.completed },
       });
 
@@ -236,86 +321,92 @@ export default function OKRs() {
     }
   };
 
+  // --- DELETE OPERATIONS ---
+
   const deleteObjective = async (id: string) => {
+    const objToDelete = objectives.find(o => o.id === id);
     try {
       const { error } = await supabase.from('objectives').delete().eq('id', id);
       if (error) throw error;
-
       await logAudit({
-        action: 'deleted',
-        entityType: 'objective',
-        entityId: id,
+        action: 'deleted', entityType: 'objective', entityId: id, entityTitle: objToDelete?.title // TITULO 
       });
-
       setObjectives(objectives.filter(o => o.id !== id));
-      toast.success('Objetivo excluído com sucesso');
+      toast.success('Objetivo excluído');
     } catch (error) {
-      console.error('Erro ao excluir objetivo:', error);
       toast.error('Falha ao excluir objetivo');
     }
   };
 
   const deleteKeyResult = async (krId: string, objectiveId: string) => {
+    const krToDelete = keyResults[objectiveId]?.find(k => k.id === krId);
     try {
       const { error } = await supabase.from('key_results').delete().eq('id', krId);
       if (error) throw error;
-
       await logAudit({
-        action: 'deleted',
-        entityType: 'key_result',
-        entityId: krId,
+        action: 'deleted', entityType: 'key_result', entityId: krId, entityTitle: krToDelete?.title // TITULO 
       });
-
-      setKeyResults({
-        ...keyResults,
-        [objectiveId]: (keyResults[objectiveId] || []).filter(kr => kr.id !== krId),
-      });
-      toast.success('Resultado-Chave excluído com sucesso');
+      setKeyResults({ ...keyResults, [objectiveId]: (keyResults[objectiveId] || []).filter(kr => kr.id !== krId) });
+      toast.success('KR excluído');
     } catch (error) {
-      console.error('Erro ao excluir resultado-chave:', error);
-      toast.error('Falha ao excluir resultado-chave');
+      toast.error('Falha ao excluir KR');
     }
   };
 
   const deleteInitiative = async (initId: string, krId: string) => {
+    const initToDelete = initiatives[krId]?.find(i => i.id === initId);
     try {
       const { error } = await supabase.from('initiatives').delete().eq('id', initId);
       if (error) throw error;
-
       await logAudit({
-        action: 'deleted',
-        entityType: 'initiative',
-        entityId: initId,
+        action: 'deleted', entityType: 'initiative', entityId: initId, entityTitle: initToDelete?.title // TITULO 
       });
-
-      setInitiatives({
-        ...initiatives,
-        [krId]: (initiatives[krId] || []).filter(i => i.id !== initId),
-      });
-      toast.success('Iniciativa excluída com sucesso');
+      setInitiatives({ ...initiatives, [krId]: (initiatives[krId] || []).filter(i => i.id !== initId) });
+      toast.success('Iniciativa excluída');
     } catch (error) {
-      console.error('Erro ao excluir iniciativa:', error);
       toast.error('Falha ao excluir iniciativa');
     }
   };
 
+  // --- HELPERS ---
+
+  const openEditObjective = (obj: Objective) => {
+    setEditingObjective(obj);
+    setObjectiveForm({
+      title: obj.title,
+      description: obj.description || '',
+      owner_id: obj.owner_id || '',
+      partner_id: obj.partner_id || ''
+    });
+  };
+
+  const openEditKR = (kr: KeyResult) => {
+    setEditingKR(kr);
+    setKRForm({
+      title: kr.title,
+      description: kr.description || ''
+    });
+  };
+
+  const openEditInitiative = (init: Initiative) => {
+    setEditingInitiative(init);
+    setInitiativeForm({
+      title: init.title,
+      description: init.description || ''
+    });
+  };
+
   const toggleObjective = (id: string) => {
     const newExpanded = new Set(expandedObjectives);
-    if (newExpanded.has(id)) {
-      newExpanded.delete(id);
-    } else {
-      newExpanded.add(id);
-    }
+    if (newExpanded.has(id)) newExpanded.delete(id);
+    else newExpanded.add(id);
     setExpandedObjectives(newExpanded);
   };
 
   const toggleKR = (id: string) => {
     const newExpanded = new Set(expandedKRs);
-    if (newExpanded.has(id)) {
-      newExpanded.delete(id);
-    } else {
-      newExpanded.add(id);
-    }
+    if (newExpanded.has(id)) newExpanded.delete(id);
+    else newExpanded.add(id);
     setExpandedKRs(newExpanded);
   };
 
@@ -506,6 +597,10 @@ export default function OKRs() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => openEditObjective(objective)}>
+                                <Edit className="h-4 w-4 mr-2" />
+                                Editar
+                              </DropdownMenuItem>
                               <DropdownMenuItem
                                 className="text-destructive focus:text-destructive"
                                 onClick={() => deleteObjective(objective.id)}
@@ -592,6 +687,10 @@ export default function OKRs() {
                                           </Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end">
+                                          <DropdownMenuItem onClick={() => openEditKR(kr)}>
+                                            <Edit className="h-4 w-4 mr-2" />
+                                            Editar
+                                          </DropdownMenuItem>
                                           <DropdownMenuItem
                                             className="text-destructive focus:text-destructive"
                                             onClick={() => deleteKeyResult(kr.id, objective.id)}
@@ -669,6 +768,14 @@ export default function OKRs() {
                                               variant="ghost"
                                               size="icon"
                                               className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                              onClick={() => openEditInitiative(initiative)}
+                                            >
+                                              <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                                            </Button>
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
                                               onClick={() => deleteInitiative(initiative.id, kr.id)}
                                             >
                                               <Trash2 className="h-3.5 w-3.5 text-destructive" />
@@ -701,6 +808,130 @@ export default function OKRs() {
             })
           )}
         </div>
+
+        {/* --- EDIT DIALOGS --- */}
+
+        {/* Edit Objective Dialog */}
+        <Dialog open={!!editingObjective} onOpenChange={() => setEditingObjective(null)}>
+          <DialogContent className="bg-card border-border">
+            <DialogHeader>
+              <DialogTitle className="text-foreground">Editar Objetivo</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-obj-title">Título *</Label>
+                <Input
+                  id="edit-obj-title"
+                  value={objectiveForm.title}
+                  onChange={e => setObjectiveForm({ ...objectiveForm, title: e.target.value })}
+                  className="input-enhanced"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-obj-description">Descrição</Label>
+                <Textarea
+                  id="edit-obj-description"
+                  value={objectiveForm.description}
+                  onChange={e => setObjectiveForm({ ...objectiveForm, description: e.target.value })}
+                  className="input-enhanced"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Responsável (Owner)</Label>
+                  <Select
+                    value={objectiveForm.owner_id}
+                    onValueChange={v => setObjectiveForm({ ...objectiveForm, owner_id: v })}
+                  >
+                    <SelectTrigger className="input-enhanced">
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {profiles.map(p => (
+                        <SelectItem key={p.id} value={p.id}>{p.full_name || p.email}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Parceiro (Partner)</Label>
+                  <Select
+                    value={objectiveForm.partner_id}
+                    onValueChange={v => setObjectiveForm({ ...objectiveForm, partner_id: v })}
+                  >
+                    <SelectTrigger className="input-enhanced">
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {profiles.map(p => (
+                        <SelectItem key={p.id} value={p.id}>{p.full_name || p.email}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditingObjective(null)}>Cancelar</Button>
+                <Button onClick={handleUpdateObjective} className="bg-[#612cb5] text-white">Salvar</Button>
+              </DialogFooter>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit KR Dialog */}
+        <Dialog open={!!editingKR} onOpenChange={() => setEditingKR(null)}>
+          <DialogContent className="bg-card border-border">
+            <DialogHeader>
+              <DialogTitle className="text-foreground">Editar Resultado-Chave</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Título *</Label>
+                <Input
+                  value={krForm.title}
+                  onChange={e => setKRForm({ ...krForm, title: e.target.value })}
+                  className="input-enhanced"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Descrição</Label>
+                <Textarea
+                  value={krForm.description}
+                  onChange={e => setKRForm({ ...krForm, description: e.target.value })}
+                  className="input-enhanced"
+                />
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditingKR(null)}>Cancelar</Button>
+                <Button onClick={handleUpdateKR} className="bg-[#612cb5] text-white">Salvar</Button>
+              </DialogFooter>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Initiative Dialog */}
+        <Dialog open={!!editingInitiative} onOpenChange={() => setEditingInitiative(null)}>
+          <DialogContent className="bg-card border-border">
+            <DialogHeader>
+              <DialogTitle className="text-foreground">Editar Iniciativa</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Título *</Label>
+                <Input
+                  value={initiativeForm.title}
+                  onChange={e => setInitiativeForm({ ...initiativeForm, title: e.target.value })}
+                  className="input-enhanced"
+                />
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditingInitiative(null)}>Cancelar</Button>
+                <Button onClick={handleUpdateInitiative} className="bg-[#612cb5] text-white">Salvar</Button>
+              </DialogFooter>
+            </div>
+          </DialogContent>
+        </Dialog>
+
       </div>
     </MainLayout>
   );

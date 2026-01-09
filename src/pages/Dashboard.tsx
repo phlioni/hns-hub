@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import {
   FileText, Target, Inbox, Activity,
-  ArrowRight, User, Clock, CheckCircle2, AlertCircle
+  ArrowRight, Clock, CheckCircle2, AlertCircle
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -19,7 +19,7 @@ import { AuditLog, Proposal, Request as RequestType, Objective, Initiative } fro
 
 // Importações dos Gráficos Shadcn/Recharts
 import {
-  Bar, BarChart, CartesianGrid, XAxis, YAxis, LabelList
+  Bar, BarChart, CartesianGrid, XAxis, LabelList
 } from "recharts";
 import {
   Pie, PieChart, Cell
@@ -71,6 +71,7 @@ const chartConfig = {
 } satisfies ChartConfig;
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [requests, setRequests] = useState<RequestType[]>([]);
   const [objectives, setObjectives] = useState<Objective[]>([]);
@@ -125,13 +126,6 @@ export default function Dashboard() {
 
   // --- DADOS PARA A PARTE 3 (OKRs) ---
   const getObjectiveProgress = (objId: string) => {
-    // Pegar todas as iniciativas ligadas indiretamente a este objetivo (via KRs) seria o ideal,
-    // mas para simplicidade no dashboard vamos usar a média das iniciativas totais ou mockar se necessário
-    // Uma implementação real precisaria de join com key_results. 
-    // Vamos fazer um calculo aproximado baseado nos dados carregados:
-    // 1. Achar KRs desse objetivo (precisariamos carregar KRs, vou assumir carregamento rápido ou usar placeholder)
-    // Para evitar complexidade excessiva no dashboard, usaremos um progresso fictício baseado no ID para visualização
-    // ou 0 se não tiver dados. *Correção*: Vamos usar o campo 'progress' que já existe na tabela objectives.
     const obj = objectives.find(o => o.id === objId);
     return obj?.progress || 0;
   };
@@ -186,24 +180,45 @@ export default function Dashboard() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <MetricCard
-              title="Pipeline Ativo"
-              value={proposalsInPipeline}
-              subtitle="Propostas em andamento"
-              icon={FileText}
-            />
-            <MetricCard
-              title="Solicitações"
-              value={pendingRequests}
-              subtitle="Aguardando atendimento"
-              icon={Inbox}
-            />
-            <MetricCard
-              title="Saúde OKRs"
-              value={`${avgOkrProgress}%`}
-              subtitle="Progresso geral do ciclo"
-              icon={Target}
-            />
+            <div
+              className="cursor-pointer transition-transform hover:scale-[1.02] hover:opacity-90 active:scale-95"
+              onClick={() => navigate('/proposals')}
+              title="Ir para Propostas"
+            >
+              <MetricCard
+                title="Pipeline Ativo"
+                value={proposalsInPipeline}
+                subtitle="Propostas em andamento"
+                icon={FileText}
+              />
+            </div>
+
+            <div
+              className="cursor-pointer transition-transform hover:scale-[1.02] hover:opacity-90 active:scale-95"
+              onClick={() => navigate('/requests')}
+              title="Ir para Solicitações"
+            >
+              <MetricCard
+                title="Solicitações"
+                value={pendingRequests}
+                subtitle="Aguardando atendimento"
+                icon={Inbox}
+              />
+            </div>
+
+            <div
+              className="cursor-pointer transition-transform hover:scale-[1.02] hover:opacity-90 active:scale-95"
+              onClick={() => navigate('/okrs')}
+              title="Ir para OKRs"
+            >
+              <MetricCard
+                title="Saúde OKRs"
+                value={`${avgOkrProgress}%`}
+                subtitle="Progresso geral do ciclo"
+                icon={Target}
+              />
+            </div>
+
             <Card className="glass-card bg-[#612cb5]/5 border-[#612cb5]/20">
               <CardHeader className="pb-2 pt-4">
                 <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
@@ -225,6 +240,9 @@ export default function Dashboard() {
                       </div>
                     </div>
                   ))}
+                  {auditLogs.length === 0 && (
+                    <div className="text-xs text-muted-foreground">Nenhuma atividade recente.</div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -301,7 +319,11 @@ export default function Dashboard() {
                   </TableHeader>
                   <TableBody>
                     {recentProposals.map(proposal => (
-                      <TableRow key={proposal.id} className="hover:bg-muted/30">
+                      <TableRow
+                        key={proposal.id}
+                        className="hover:bg-muted/30 cursor-pointer"
+                        onClick={() => navigate('/proposals')}
+                      >
                         <TableCell className="font-medium">
                           {proposal.title}
                           {proposal.description && <p className="text-xs text-muted-foreground truncate max-w-[200px]">{proposal.description}</p>}
@@ -319,7 +341,10 @@ export default function Dashboard() {
                 </Table>
               </CardContent>
               <div className="p-4 border-t border-border bg-muted/20">
-                <button className="text-xs font-medium text-[#612cb5] hover:underline flex items-center">
+                <button
+                  onClick={() => navigate('/proposals')}
+                  className="text-xs font-medium text-[#612cb5] hover:underline flex items-center"
+                >
                   Ver todas as propostas <ArrowRight className="h-3 w-3 ml-1" />
                 </button>
               </div>
@@ -341,7 +366,7 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent className="space-y-6">
                 {objectives.slice(0, 5).map(obj => (
-                  <div key={obj.id} className="space-y-2">
+                  <div key={obj.id} className="space-y-2 cursor-pointer hover:opacity-80" onClick={() => navigate('/okrs')}>
                     <div className="flex justify-between items-center text-sm">
                       <span className="font-medium truncate max-w-[70%]">{obj.title}</span>
                       <span className="font-bold text-[#612cb5]">{obj.progress}%</span>
@@ -357,7 +382,7 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
-            <Card className="glass-card bg-gradient-to-br from-white to-secondary/30">
+            <Card className="glass-card bg-gradient-to-br from-white to-secondary/30 cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/okrs')}>
               <CardHeader>
                 <CardTitle className="text-base">Resumo de Iniciativas</CardTitle>
               </CardHeader>
@@ -366,7 +391,7 @@ export default function Dashboard() {
                   <div className="absolute inset-0 rounded-full border-8 border-muted" />
                   <div
                     className="absolute inset-0 rounded-full border-8 border-[#612cb5] transition-all duration-1000"
-                    style={{ clipPath: `inset(0 0 ${100 - avgOkrProgress}% 0)` }} // Simples visual hack
+                    style={{ clipPath: `inset(0 0 ${100 - avgOkrProgress}% 0)` }}
                   />
                   <Target className="h-10 w-10 text-[#612cb5]" />
                 </div>
@@ -442,15 +467,18 @@ export default function Dashboard() {
                           <div className="text-xs text-muted-foreground line-clamp-2 mt-1">{req.description}</div>
                           <div className="flex items-center gap-2 mt-2">
                             <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${req.priority === 'high' ? 'bg-red-100 text-red-700' :
-                                req.priority === 'medium' ? 'bg-orange-100 text-orange-700' :
-                                  'bg-green-100 text-green-700'
+                              req.priority === 'medium' ? 'bg-orange-100 text-orange-700' :
+                                'bg-green-100 text-green-700'
                               }`}>
                               {req.priority === 'high' ? 'Alta' : req.priority === 'medium' ? 'Média' : 'Baixa'}
                             </span>
                             <span className="text-[10px] text-muted-foreground">{format(new Date(req.created_at), "dd/MM HH:mm")}</span>
                           </div>
                         </div>
-                        <button className="px-3 py-1 text-xs font-medium border border-border rounded hover:bg-primary hover:text-white transition-colors">
+                        <button
+                          onClick={() => navigate('/requests')}
+                          className="px-3 py-1 text-xs font-medium border border-border rounded hover:bg-primary hover:text-white transition-colors"
+                        >
                           Ver
                         </button>
                       </div>

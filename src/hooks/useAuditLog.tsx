@@ -1,15 +1,15 @@
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { toast } from 'sonner';
 
 interface LogAuditParams {
   action: string;
   entityType: string;
   entityId: string;
+  entityTitle?: string; // NOVO CAMPO
   previousStatus?: string;
   newStatus?: string;
-  metadata?: Record<string, any>; // Permite passar { justification: "..." }
+  metadata?: Record<string, any>;
 }
 
 export function useAuditLog() {
@@ -20,6 +20,7 @@ export function useAuditLog() {
     action,
     entityType,
     entityId,
+    entityTitle,
     previousStatus,
     newStatus,
     metadata = {}
@@ -39,14 +40,13 @@ export function useAuditLog() {
         new_status: newStatus,
         metadata: {
           ...metadata,
-          user_name: userName
+          user_name: userName,
+          entity_title: entityTitle || 'Sem título' // Salva o título no JSON
         }
       });
 
       if (error) {
         console.error('Erro ao gravar log de auditoria:', error);
-        // Não lançamos erro para o usuário não ser bloqueado por falha de log, 
-        // mas logamos no console.
       }
     } catch (error) {
       console.error('Erro interno ao gravar log:', error);

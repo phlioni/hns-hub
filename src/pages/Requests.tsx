@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Plus, Search, MoreHorizontal, Inbox, Trash2, Edit, History, User } from 'lucide-react';
+import { Plus, Search, MoreHorizontal, Inbox, Trash2, Edit, History, User, Paperclip, FileText, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuditLog } from '@/hooks/useAuditLog';
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -31,6 +31,12 @@ const priorityOptions: { value: RequestPriority; label: string }[] = [
   { value: 'high', label: 'Alta' },
 ];
 
+interface Attachment {
+  name: string;
+  url: string;
+  type: string;
+}
+
 export default function Requests() {
   const { logAudit } = useAuditLog();
   const [requests, setRequests] = useState<RequestType[]>([]);
@@ -41,6 +47,10 @@ export default function Requests() {
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingRequest, setEditingRequest] = useState<RequestType | null>(null);
+
+  // Attachment State
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -71,6 +81,36 @@ export default function Requests() {
     }
   };
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    setIsUploading(true);
+    const file = e.target.files[0];
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
+    const filePath = `requests/${fileName}`;
+
+    try {
+      const { error: uploadError } = await supabase.storage.from('attachments').upload(filePath, file);
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage.from('attachments').getPublicUrl(filePath);
+
+      setAttachments([...attachments, { name: file.name, url: publicUrl, type: file.type }]);
+      toast.success('Arquivo anexado com sucesso');
+    } catch (error) {
+      toast.error('Erro no upload do arquivo');
+      console.error(error);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const removeAttachment = (index: number) => {
+    const newAtt = [...attachments];
+    newAtt.splice(index, 1);
+    setAttachments(newAtt);
+  };
+
   const handleCreate = async () => {
     if (!formData.requester_name.trim() || !formData.description.trim()) {
       toast.error('Nome do solicitante e descrição são obrigatórios');
@@ -85,6 +125,7 @@ export default function Requests() {
           description: formData.description,
           assignee_id: formData.assignee_id === 'unassigned' ? null : formData.assignee_id,
           priority: formData.priority,
+          attachments: attachments,
         })
         .select()
         .single();
@@ -95,11 +136,13 @@ export default function Requests() {
         action: 'created',
         entityType: 'request',
         entityId: data.id,
+        entityTitle: data.requester_name, // TITULO
         newStatus: 'pending',
       });
 
       setRequests([data as RequestType, ...requests]);
       setFormData({ requester_name: '', description: '', assignee_id: 'unassigned', priority: 'medium' });
+      setAttachments([]);
       setIsCreateOpen(false);
       toast.success('Solicitação criada com sucesso');
     } catch (error) {
@@ -119,6 +162,7 @@ export default function Requests() {
           description: formData.description,
           assignee_id: formData.assignee_id === 'unassigned' ? null : formData.assignee_id,
           priority: formData.priority,
+          attachments: attachments,
         })
         .eq('id', editingRequest.id)
         .select()
@@ -130,11 +174,13 @@ export default function Requests() {
         action: 'updated',
         entityType: 'request',
         entityId: data.id,
+        entityTitle: data.requester_name, // TITULO
       });
 
       setRequests(requests.map(r => r.id === data.id ? data as RequestType : r));
       setEditingRequest(null);
       setFormData({ requester_name: '', description: '', assignee_id: 'unassigned', priority: 'medium' });
+      setAttachments([]);
       toast.success('Solicitação atualizada com sucesso');
     } catch (error) {
       console.error('Erro ao atualizar solicitação:', error);
@@ -144,7 +190,7 @@ export default function Requests() {
 
   const handleStatusChange = async (request: RequestType, newStatus: RequestStatus) => {
     const previousStatus = request.status;
-    
+
     try {
       const { data, error } = await supabase
         .from('requests')
@@ -159,6 +205,7 @@ export default function Requests() {
         action: 'status_changed',
         entityType: 'request',
         entityId: request.id,
+        entityTitle: request.requester_name, // TITULO
         previousStatus,
         newStatus,
       });
@@ -172,6 +219,7 @@ export default function Requests() {
   };
 
   const handleDelete = async (id: string) => {
+    const reqToDelete = requests.find(r => r.id === id);
     try {
       const { error } = await supabase.from('requests').delete().eq('id', id);
       if (error) throw error;
@@ -180,6 +228,7 @@ export default function Requests() {
         action: 'deleted',
         entityType: 'request',
         entityId: id,
+        entityTitle: reqToDelete?.requester_name || 'Desconhecido', // TITULO
       });
 
       setRequests(requests.filter(r => r.id !== id));
@@ -198,6 +247,8 @@ export default function Requests() {
       assignee_id: request.assignee_id || 'unassigned',
       priority: request.priority,
     });
+    // @ts-ignore
+    setAttachments(request.attachments || []);
   };
 
   const getAssigneeName = (assigneeId: string | null) => {
@@ -208,7 +259,7 @@ export default function Requests() {
 
   // Filter requests
   const filteredRequests = requests.filter(request => {
-    const matchesSearch = 
+    const matchesSearch =
       request.requester_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       request.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || request.status === statusFilter;
@@ -235,10 +286,16 @@ export default function Requests() {
             <h1 className="text-3xl font-bold text-foreground">Solicitações</h1>
             <p className="text-muted-foreground mt-1">Gerencie solicitações e tickets recebidos</p>
           </div>
-          
-          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+
+          <Dialog open={isCreateOpen} onOpenChange={(open) => {
+            setIsCreateOpen(open);
+            if (!open) {
+              setFormData({ requester_name: '', description: '', assignee_id: 'unassigned', priority: 'medium' });
+              setAttachments([]);
+            }
+          }}>
             <DialogTrigger asChild>
-              <Button className="btn-glow">
+              <Button className="btn-glow bg-[#612cb5] text-white hover:bg-[#502495]">
                 <Plus className="h-4 w-4 mr-2" />
                 Nova Solicitação
               </Button>
@@ -305,9 +362,28 @@ export default function Requests() {
                     </Select>
                   </div>
                 </div>
+
+                {/* Attachments */}
+                <div className="space-y-2 bg-secondary/20 p-3 rounded-lg border border-border/50">
+                  <Label className="flex items-center gap-2 text-[#612cb5]"><Paperclip className="h-4 w-4" /> Anexar Documento</Label>
+                  <div className="flex items-center gap-2">
+                    <Input type="file" onChange={handleFileUpload} disabled={isUploading} className="text-sm input-enhanced h-9" />
+                    {isUploading && <span className="text-xs text-muted-foreground animate-pulse">Enviando...</span>}
+                  </div>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {attachments.map((att, idx) => (
+                      <div key={idx} className="flex items-center gap-1 bg-background px-3 py-1.5 rounded-md text-xs border border-border shadow-sm">
+                        <FileText className="h-3 w-3 text-muted-foreground" />
+                        <span className="max-w-[150px] truncate">{att.name}</span>
+                        <button onClick={() => removeAttachment(idx)} className="hover:text-destructive transition-colors ml-1"><X className="h-3 w-3" /></button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="flex justify-end gap-3 pt-4">
                   <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
-                  <Button onClick={handleCreate} className="btn-glow">Criar Solicitação</Button>
+                  <Button onClick={handleCreate} className="btn-glow bg-[#612cb5] text-white hover:bg-[#502495]">Criar Solicitação</Button>
                 </div>
               </div>
             </DialogContent>
@@ -360,6 +436,7 @@ export default function Requests() {
               <TableRow className="border-border hover:bg-transparent">
                 <TableHead className="text-muted-foreground">Solicitante</TableHead>
                 <TableHead className="text-muted-foreground">Descrição</TableHead>
+                <TableHead className="text-muted-foreground">Anexo</TableHead>
                 <TableHead className="text-muted-foreground">Prioridade</TableHead>
                 <TableHead className="text-muted-foreground">Status</TableHead>
                 <TableHead className="text-muted-foreground">Responsável</TableHead>
@@ -370,7 +447,7 @@ export default function Requests() {
             <TableBody>
               {filteredRequests.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
                     <Inbox className="h-12 w-12 mx-auto mb-4 opacity-50" />
                     <p>Nenhuma solicitação encontrada</p>
                   </TableCell>
@@ -392,6 +469,22 @@ export default function Requests() {
                     </TableCell>
                     <TableCell>
                       <p className="text-foreground line-clamp-2 max-w-xs">{request.description}</p>
+                    </TableCell>
+                    <TableCell>
+                      {/* @ts-ignore */}
+                      {request.attachments && request.attachments.length > 0 ? (
+                        <div className="flex items-center gap-1 text-muted-foreground text-xs bg-secondary/50 px-2 py-1 rounded w-fit">
+                          <Paperclip className="h-3 w-3" />
+                          <a
+                            href={request.attachments[0].url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hover:underline"
+                          >
+                            Abrir
+                          </a>
+                        </div>
+                      ) : <span className="text-muted-foreground text-xs pl-2">-</span>}
                     </TableCell>
                     <TableCell>
                       <PriorityBadge priority={request.priority} />
@@ -517,9 +610,28 @@ export default function Requests() {
                   </Select>
                 </div>
               </div>
+
+              {/* Attachments Edit */}
+              <div className="space-y-2 bg-secondary/20 p-3 rounded-lg border border-border/50">
+                <Label className="flex items-center gap-2 text-[#612cb5]"><Paperclip className="h-4 w-4" /> Anexar Documento</Label>
+                <div className="flex items-center gap-2">
+                  <Input type="file" onChange={handleFileUpload} disabled={isUploading} className="text-sm input-enhanced h-9" />
+                  {isUploading && <span className="text-xs text-muted-foreground animate-pulse">Enviando...</span>}
+                </div>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {attachments.map((att, idx) => (
+                    <div key={idx} className="flex items-center gap-1 bg-background px-3 py-1.5 rounded-md text-xs border border-border shadow-sm">
+                      <FileText className="h-3 w-3 text-muted-foreground" />
+                      <span className="max-w-[150px] truncate">{att.name}</span>
+                      <button onClick={() => removeAttachment(idx)} className="hover:text-destructive transition-colors ml-1"><X className="h-3 w-3" /></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <div className="flex justify-end gap-3 pt-4">
                 <Button variant="outline" onClick={() => setEditingRequest(null)}>Cancelar</Button>
-                <Button onClick={handleUpdate} className="btn-glow">Salvar Alterações</Button>
+                <Button onClick={handleUpdate} className="btn-glow bg-[#612cb5] text-white hover:bg-[#502495]">Salvar Alterações</Button>
               </div>
             </div>
           </DialogContent>

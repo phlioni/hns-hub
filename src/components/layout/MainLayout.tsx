@@ -7,10 +7,13 @@ interface MainLayoutProps {
 
 export function MainLayout({ children }: MainLayoutProps) {
   return (
-    <div className="flex min-h-screen w-full bg-background">
+    // MUDANÇA: h-screen (fixo) ao invés de min-h-screen, e overflow-hidden para não scrollar a janela
+    <div className="flex h-screen w-full bg-background overflow-hidden">
       <AppSidebar />
-      <main className="flex-1 overflow-auto">
-        <div className="p-6 lg:p-8">
+
+      {/* MUDANÇA: h-full e overflow-y-auto permitem que SÓ este container tenha scroll */}
+      <main className="flex-1 h-full overflow-y-auto relative scroll-smooth">
+        <div className="p-6 lg:p-8 pb-20">
           {children}
         </div>
       </main>

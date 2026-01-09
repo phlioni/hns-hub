@@ -12,6 +12,9 @@ import Proposals from "./pages/Proposals";
 import OKRs from "./pages/OKRs";
 import Requests from "./pages/Requests";
 import Settings from "./pages/Settings";
+import AccessControl from "./pages/AccessControl";
+import Reports from "./pages/Reports";
+import Audit from "./pages/Audit"; // NOVO IMPORT
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -42,7 +45,7 @@ function AppRoutes() {
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow">
-            <span className="text-xl font-bold text-primary-foreground">H</span>
+            <span className="text-xl font-bold text-primary-foreground">CCT</span>
           </div>
           <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent" />
         </div>
@@ -57,6 +60,8 @@ function AppRoutes() {
       <Route path="/proposals" element={<ProtectedRoute><Proposals /></ProtectedRoute>} />
       <Route path="/okrs" element={<ProtectedRoute><OKRs /></ProtectedRoute>} />
       <Route path="/requests" element={<ProtectedRoute><Requests /></ProtectedRoute>} />
+      <Route path="/audit" element={<ProtectedRoute><Audit /></ProtectedRoute>} /> {/* NOVA ROTA */}
+      <Route path="/access" element={<ProtectedRoute><AccessControl /></ProtectedRoute>} />
       <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
