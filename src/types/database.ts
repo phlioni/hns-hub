@@ -1,6 +1,16 @@
 export type AppRole = 'admin' | 'member';
 
-export type ProposalStatus = 'new' | 'understanding' | 'construction' | 'cancelled' | 'delivered';
+// ATUALIZADO: Adicionado os novos status (in_review, awaiting_code, awaiting_contract, operational_start)
+export type ProposalStatus =
+  | 'new'
+  | 'understanding'
+  | 'construction'
+  | 'cancelled'
+  | 'delivered'
+  | 'in_review'
+  | 'awaiting_code'
+  | 'awaiting_contract'
+  | 'operational_start';
 
 export type RequestPriority = 'low' | 'medium' | 'high';
 
@@ -34,6 +44,7 @@ export interface Proposal {
   entry_date: string;
   deadline: string | null;
   delivery_date: string | null;
+  project_code: string | null; // ATUALIZADO: Nova coluna adicionada
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -81,7 +92,7 @@ export interface Request {
   assignee_id: string | null;
   priority: RequestPriority;
   status: RequestStatus;
-  attachments: any[]; // Novo campo
+  attachments: any[];
   created_at: string;
   updated_at: string;
 }

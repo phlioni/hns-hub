@@ -23,7 +23,6 @@ const navItems = [
   { title: 'Propostas', url: '/proposals', icon: FileText },
   { title: 'OKRs', url: '/okrs', icon: Target },
   { title: 'Solicitações', url: '/requests', icon: Inbox },
-  { title: 'Relatórios', url: '/reports', icon: BarChart3 },
   { title: 'Auditoria', url: '/audit', icon: ShieldCheck, restricted: true },
   { title: 'Gestão de Acesso', url: '/access', icon: Shield, restricted: true },
   { title: 'Configurações', url: '/settings', icon: Settings },

@@ -23,10 +23,15 @@ import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { Proposal, ProposalStatus } from '@/types/database';
 
+// Status disponíveis para seleção manual na plataforma.
+// "awaiting_contract" e "operational_start" não estão aqui pois só podem ser alterados via API.
+// Novos status adicionados: in_review, awaiting_code
 const statusOptions: { value: ProposalStatus; label: string }[] = [
   { value: 'new', label: 'Novo' },
   { value: 'understanding', label: 'Entendimento' },
   { value: 'construction', label: 'Construção' },
+  { value: 'in_review', label: 'Em Revisão' },
+  { value: 'awaiting_code', label: 'Aguardando Código' },
   { value: 'cancelled', label: 'Cancelado' },
   { value: 'delivered', label: 'Entregue' },
 ];
@@ -168,7 +173,7 @@ export default function Proposals() {
         action: 'created',
         entityType: 'proposal',
         entityId: data.id,
-        entityTitle: data.title, // TITULO AQUI
+        entityTitle: data.title,
         newStatus: 'new',
       });
 
@@ -204,10 +209,10 @@ export default function Proposals() {
       if (error) throw error;
 
       await logAudit({
-        action: 'updated',
+        action: 'edited',
         entityType: 'proposal',
         entityId: data.id,
-        entityTitle: data.title, // TITULO AQUI
+        entityTitle: data.title,
       });
 
       setProposals(proposals.map(p => p.id === data.id ? data as Proposal : p));
@@ -256,7 +261,7 @@ export default function Proposals() {
         action: 'status_changed',
         entityType: 'proposal',
         entityId: proposal.id,
-        entityTitle: proposal.title, // TITULO AQUI
+        entityTitle: proposal.title,
         previousStatus,
         newStatus,
         metadata: justify ? { justification: justify } : undefined
@@ -277,7 +282,7 @@ export default function Proposals() {
   };
 
   const handleDelete = async (id: string) => {
-    const proposalToDelete = proposals.find(p => p.id === id); // Encontra antes de deletar
+    const proposalToDelete = proposals.find(p => p.id === id);
     try {
       const { error } = await supabase.from('proposals').delete().eq('id', id);
       if (error) throw error;
@@ -286,7 +291,7 @@ export default function Proposals() {
         action: 'deleted',
         entityType: 'proposal',
         entityId: id,
-        entityTitle: proposalToDelete?.title || 'Desconhecido', // TITULO AQUI
+        entityTitle: proposalToDelete?.title || 'Desconhecido',
       });
 
       setProposals(proposals.filter(p => p.id !== id));
@@ -318,16 +323,6 @@ export default function Proposals() {
     const matchesStatus = statusFilter === 'all' || proposal.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
-
-  if (loading) {
-    return (
-      <MainLayout>
-        <div className="flex items-center justify-center h-96">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
-        </div>
-      </MainLayout>
-    );
-  }
 
   return (
     <MainLayout>
@@ -486,6 +481,9 @@ export default function Proposals() {
                   {statusOptions.map(option => (
                     <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
                   ))}
+                  {/* Incluir opções de API apenas para filtro caso existam */}
+                  <SelectItem value="awaiting_contract">Aguard. Contrato</SelectItem>
+                  <SelectItem value="operational_start">Start Operacional</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -515,105 +513,116 @@ export default function Proposals() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredProposals.map((proposal, index) => (
-                  <TableRow
-                    key={proposal.id}
-                    className="border-border data-table-row animate-slide-up cursor-pointer hover:bg-muted/30 transition-colors"
-                    style={{ animationDelay: `${index * 30}ms` }}
-                    onClick={() => setViewingProposal(proposal)}
-                  >
-                    <TableCell>
-                      <div>
-                        <p className="font-medium text-foreground">{proposal.title}</p>
-                        {proposal.description && (
-                          <p className="text-sm text-muted-foreground line-clamp-1">{proposal.description}</p>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell onClick={(e) => e.stopPropagation()}>
-                      <Select
-                        value={proposal.status}
-                        onValueChange={(value) => handleStatusChangeRequest(proposal, value as ProposalStatus)}
-                      >
-                        <SelectTrigger className="w-36 border-0 bg-transparent p-0 h-auto focus:ring-0">
-                          <StatusBadge status={proposal.status} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {statusOptions.map(option => (
-                            <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        {/* @ts-ignore */}
-                        {(proposal.attachments && proposal.attachments.length > 0) && (
-                          <div className="flex items-center gap-1 text-muted-foreground text-xs bg-secondary/50 px-2 py-1 rounded w-fit" title={`${proposal.attachments.length} anexos`}>
-                            <Paperclip className="h-3 w-3" /> <span className="font-medium">{proposal.attachments.length}</span>
+                filteredProposals.map((proposal, index) => {
+                  // Verificar se o status atual é um dos restritos (API)
+                  const isRestrictedStatus = ['awaiting_contract', 'operational_start'].includes(proposal.status);
+
+                  return (
+                    <TableRow
+                      key={proposal.id}
+                      className="border-border data-table-row animate-slide-up cursor-pointer hover:bg-muted/30 transition-colors"
+                      style={{ animationDelay: `${index * 30}ms` }}
+                      onClick={() => setViewingProposal(proposal)}
+                    >
+                      <TableCell>
+                        <div>
+                          <p className="font-medium text-foreground">{proposal.title}</p>
+                          {proposal.description && (
+                            <p className="text-sm text-muted-foreground line-clamp-1">{proposal.description}</p>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        {isRestrictedStatus ? (
+                          <div title="Alteração permitida apenas via API">
+                            <StatusBadge status={proposal.status} />
                           </div>
+                        ) : (
+                          <Select
+                            value={proposal.status}
+                            onValueChange={(value) => handleStatusChangeRequest(proposal, value as ProposalStatus)}
+                          >
+                            <SelectTrigger className="w-36 border-0 bg-transparent p-0 h-auto focus:ring-0">
+                              <StatusBadge status={proposal.status} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {statusOptions.map(option => (
+                                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         )}
-                        {(proposal.links && proposal.links.length > 0) && (
-                          <div className="flex items-center gap-1 text-[#612cb5] text-xs bg-[#612cb5]/10 px-2 py-1 rounded w-fit" title={`${proposal.links.length} links`}>
-                            <LinkIcon className="h-3 w-3" /> <span className="font-medium">{proposal.links.length}</span>
-                          </div>
-                        )}
-                        {!proposal.attachments?.length && !proposal.links?.length && <span className="text-muted-foreground text-xs pl-2">-</span>}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-foreground font-medium">
-                      {proposal.deadline ? (
-                        <span className={new Date(proposal.deadline) < new Date() && proposal.status !== 'delivered' ? 'text-destructive' : ''}>
-                          {format(new Date(proposal.deadline), "dd/MM/yyyy")}
-                        </span>
-                      ) : '—'}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {format(new Date(proposal.entry_date), "dd/MM/yyyy", { locale: ptBR })}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {proposal.delivery_date
-                        ? format(new Date(proposal.delivery_date), "dd/MM/yyyy", { locale: ptBR })
-                        : '—'}
-                    </TableCell>
-                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => setViewingProposal(proposal)} title="Visualizar">
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <AuditHistoryDrawer
-                          entityType="proposal"
-                          entityId={proposal.id}
-                          trigger={
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <History className="h-4 w-4" />
-                            </Button>
-                          }
-                        />
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => openEdit(proposal)}>
-                              <Edit className="h-4 w-4 mr-2" />
-                              Editar
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              onClick={() => handleDelete(proposal.id)}
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Excluir
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          {/* @ts-ignore */}
+                          {(proposal.attachments && proposal.attachments.length > 0) && (
+                            <div className="flex items-center gap-1 text-muted-foreground text-xs bg-secondary/50 px-2 py-1 rounded w-fit" title={`${proposal.attachments.length} anexos`}>
+                              <Paperclip className="h-3 w-3" /> <span className="font-medium">{proposal.attachments.length}</span>
+                            </div>
+                          )}
+                          {(proposal.links && proposal.links.length > 0) && (
+                            <div className="flex items-center gap-1 text-[#612cb5] text-xs bg-[#612cb5]/10 px-2 py-1 rounded w-fit" title={`${proposal.links.length} links`}>
+                              <LinkIcon className="h-3 w-3" /> <span className="font-medium">{proposal.links.length}</span>
+                            </div>
+                          )}
+                          {!proposal.attachments?.length && !proposal.links?.length && <span className="text-muted-foreground text-xs pl-2">-</span>}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-foreground font-medium">
+                        {proposal.deadline ? (
+                          <span className={new Date(proposal.deadline) < new Date() && proposal.status !== 'delivered' ? 'text-destructive' : ''}>
+                            {format(new Date(proposal.deadline), "dd/MM/yyyy")}
+                          </span>
+                        ) : '—'}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {format(new Date(proposal.entry_date), "dd/MM/yyyy", { locale: ptBR })}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {proposal.delivery_date
+                          ? format(new Date(proposal.delivery_date), "dd/MM/yyyy", { locale: ptBR })
+                          : '—'}
+                      </TableCell>
+                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => setViewingProposal(proposal)} title="Visualizar">
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <AuditHistoryDrawer
+                            entityType="proposal"
+                            entityId={proposal.id}
+                            trigger={
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <History className="h-4 w-4" />
+                              </Button>
+                            }
+                          />
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => openEdit(proposal)}>
+                                <Edit className="h-4 w-4 mr-2" />
+                                Editar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => handleDelete(proposal.id)}
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Excluir
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>

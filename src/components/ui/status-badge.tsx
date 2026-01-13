@@ -1,35 +1,58 @@
-import { cn } from '@/lib/utils';
-import { ProposalStatus, RequestStatus, RequestPriority } from '@/types/database';
+import { cn } from "@/lib/utils";
 
 interface StatusBadgeProps {
-  status: ProposalStatus | RequestStatus;
+  status: string;
   className?: string;
 }
 
-const proposalStatusConfig: Record<ProposalStatus, { label: string; className: string }> = {
-  new: { label: 'Novo', className: 'bg-status-new/20 text-status-new border-status-new/30' },
-  understanding: { label: 'Entendimento', className: 'bg-status-understanding/20 text-status-understanding border-status-understanding/30' },
-  construction: { label: 'Construção', className: 'bg-status-construction/20 text-status-construction border-status-construction/30' },
-  cancelled: { label: 'Cancelado', className: 'bg-status-cancelled/20 text-status-cancelled border-status-cancelled/30' },
-  delivered: { label: 'Entregue', className: 'bg-status-delivered/20 text-status-delivered border-status-delivered/30' },
-};
-
-const requestStatusConfig: Record<RequestStatus, { label: string; className: string }> = {
-  pending: { label: 'Pendente', className: 'bg-status-pending/20 text-status-pending border-status-pending/30' },
-  in_progress: { label: 'Em Andamento', className: 'bg-status-in-progress/20 text-status-in-progress border-status-in-progress/30' },
-  done: { label: 'Concluído', className: 'bg-status-done/20 text-status-done border-status-done/30' },
-};
+interface PriorityBadgeProps {
+  priority: string;
+  className?: string;
+}
 
 export function StatusBadge({ status, className }: StatusBadgeProps) {
-  const config = proposalStatusConfig[status as ProposalStatus] || requestStatusConfig[status as RequestStatus];
-  
-  if (!config) return null;
+  const getStatusConfig = (status: string) => {
+    switch (status) {
+      // PROPOSAL STATUSES
+      case "new":
+        return { label: "Novo", color: "bg-blue-100 text-blue-800 border-blue-200" };
+      case "understanding":
+        return { label: "Entendimento", color: "bg-indigo-100 text-indigo-800 border-indigo-200" };
+      case "construction":
+        return { label: "Construção", color: "bg-amber-100 text-amber-800 border-amber-200" };
+      case "in_review":
+        return { label: "Em Revisão", color: "bg-purple-100 text-purple-800 border-purple-200" };
+      case "awaiting_code":
+        return { label: "Aguard. Código", color: "bg-pink-100 text-pink-800 border-pink-200" };
+      case "awaiting_contract":
+        return { label: "Aguard. Contrato", color: "bg-orange-100 text-orange-800 border-orange-200" };
+      case "operational_start":
+        return { label: "Start Operacional", color: "bg-emerald-100 text-emerald-800 border-emerald-200" };
+      case "delivered":
+        return { label: "Entregue", color: "bg-green-100 text-green-800 border-green-200" };
+      case "cancelled":
+        return { label: "Cancelado", color: "bg-slate-100 text-slate-800 border-slate-200" };
+
+      // REQUEST STATUSES
+      case "pending":
+        return { label: "Pendente", color: "bg-yellow-100 text-yellow-800 border-yellow-200" };
+      case "in_progress":
+        return { label: "Em Progresso", color: "bg-blue-100 text-blue-800 border-blue-200" };
+      case "done":
+        return { label: "Concluído", color: "bg-green-100 text-green-800 border-green-200" };
+
+      default:
+        return { label: status, color: "bg-gray-100 text-gray-800 border-gray-200" };
+    }
+  };
+
+  const config = getStatusConfig(status);
 
   return (
     <span
       className={cn(
-        'inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border',
-        config.className,
+        "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap",
+        config.color,
         className
       )}
     >
@@ -38,25 +61,28 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
   );
 }
 
-interface PriorityBadgeProps {
-  priority: RequestPriority;
-  className?: string;
-}
-
-const priorityConfig: Record<RequestPriority, { label: string; className: string }> = {
-  low: { label: 'Baixa', className: 'bg-priority-low/20 text-priority-low border-priority-low/30' },
-  medium: { label: 'Média', className: 'bg-priority-medium/20 text-priority-medium border-priority-medium/30' },
-  high: { label: 'Alta', className: 'bg-priority-high/20 text-priority-high border-priority-high/30' },
-};
-
+// Componente que estava faltando e causou o erro em Requests.tsx
 export function PriorityBadge({ priority, className }: PriorityBadgeProps) {
-  const config = priorityConfig[priority];
-  
+  const getPriorityConfig = (priority: string) => {
+    switch (priority) {
+      case "high":
+        return { label: "Alta", color: "bg-red-100 text-red-800 border-red-200" };
+      case "medium":
+        return { label: "Média", color: "bg-yellow-100 text-yellow-800 border-yellow-200" };
+      case "low":
+        return { label: "Baixa", color: "bg-green-100 text-green-800 border-green-200" };
+      default:
+        return { label: priority, color: "bg-gray-100 text-gray-800 border-gray-200" };
+    }
+  };
+
+  const config = getPriorityConfig(priority);
+
   return (
     <span
       className={cn(
-        'inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border',
-        config.className,
+        "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap",
+        config.color,
         className
       )}
     >
