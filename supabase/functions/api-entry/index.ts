@@ -55,7 +55,6 @@ serve(async (req) => {
                 if (description) updatePayload.description = description;
                 if (deadline) updatePayload.deadline = deadline;
 
-                // --- ALTERAÇÃO AQUI ---
                 // Se receber o código do projeto, salva o código E muda o status para 'new'
                 if (project_code) {
                     updatePayload.project_code = project_code;
@@ -63,8 +62,9 @@ serve(async (req) => {
                     newStatus = 'new';
                 }
 
-                // Se vier justificativa no payload, salva na coluna da tabela
-                if (justification) updatePayload.last_justification = justification;
+                // --- ALTERAÇÃO SOLICITADA ---
+                // Se vier justificativa no payload, usa ela. Se não, usa a mensagem padrão de integração.
+                updatePayload.last_justification = justification || "Alteração via integração externa (API)";
 
                 // Se o usuário enviou um status explicitamente no JSON, ele sobrescreve a regra anterior
                 if (status) {
@@ -88,7 +88,7 @@ serve(async (req) => {
 
                 // INSERIR AUDIT LOG
                 let action = 'edited';
-                // Verifica se houve mudança de status (comparando o atual do banco com o novo calculado)
+                // Verifica se houve mudança de status
                 if (newStatus !== currentProposal.status) {
                     action = 'status_changed';
                 }
@@ -102,7 +102,8 @@ serve(async (req) => {
                     new_status: newStatus,
                     metadata: {
                         entity_title: result.data.title,
-                        justification: justification || 'Alteração via integração externa (API)'
+                        // Usa a mesma lógica do updatePayload para o log
+                        justification: updatePayload.last_justification
                     }
                 });
 
@@ -129,7 +130,8 @@ serve(async (req) => {
                     status: initialStatus,
                     deadline: finalDeadline,
                     project_code: project_code || null,
-                    last_justification: justification || null, // Salva justificativa inicial se houver
+                    // Define padrão para criação também, se não vier justificativa
+                    last_justification: justification || "Criação via integração externa (API)",
                     entry_date: entryDateObj.toISOString(),
                 };
 
@@ -146,7 +148,7 @@ serve(async (req) => {
                     new_status: initialStatus,
                     metadata: {
                         entity_title: result.data.title,
-                        justification: justification || 'Criação via integração externa (API)'
+                        justification: insertPayload.last_justification
                     }
                 });
             }
@@ -173,7 +175,6 @@ serve(async (req) => {
             throw result.error
         }
 
-        // RETORNO ATUALIZADO
         return new Response(JSON.stringify({
             success: true,
             message: `${type} processed successfully`,

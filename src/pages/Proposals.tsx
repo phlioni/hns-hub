@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { format } from 'date-fns';
+import { useSearchParams } from 'react-router-dom';
+import { format, differenceInDays, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
   Plus, Search, History, MoreHorizontal, FileText, Trash2, Edit,
-  Paperclip, X, Link as LinkIcon, ExternalLink, Eye, MessageSquare
+  Paperclip, X, Link as LinkIcon, ExternalLink, Eye, MessageSquare, Clock
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -45,12 +46,16 @@ interface ExternalLinkItem {
 }
 
 export default function Proposals() {
-  const { user, role } = useAuth(); // Pegando role aqui
+  const { user, role } = useAuth();
   const { logAudit } = useAuditLog();
+  const [searchParams] = useSearchParams();
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+
+  // Verifica se veio com filtro de Lead Time da Dashboard
+  const viewMode = searchParams.get('view');
 
   // Modais
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -77,7 +82,6 @@ export default function Proposals() {
     deadline: '',
   });
 
-  // Flag para controle de permissões
   const isAccountManager = role === 'account_manager';
 
   useEffect(() => {
@@ -101,13 +105,10 @@ export default function Proposals() {
     }
   };
 
-  // Helper para lidar com status "edited"
-  const getStatusLabel = (status: string) => {
-    if (!status) return "";
-    // TRATAMENTO SOLICITADO PARA O STATUS "EDITED"
-    if (status.toLowerCase() === 'edited') return 'Editado';
-    const option = statusOptions.find(opt => opt.value === status);
-    return option ? option.label : status;
+  // Função Auxiliar para calcular dias
+  const calculateDaysDiff = (start?: string | null, end?: string | null) => {
+    if (!start || !end) return '-';
+    return `${differenceInDays(parseISO(end), parseISO(start))} dias`;
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -156,7 +157,7 @@ export default function Proposals() {
   };
 
   const handleCreate = async () => {
-    if (isAccountManager) return; // Segurança extra
+    if (isAccountManager) return;
 
     if (!formData.title.trim()) {
       toast.error('Título é obrigatório');
@@ -202,7 +203,7 @@ export default function Proposals() {
   };
 
   const handleUpdate = async () => {
-    if (isAccountManager) return; // Segurança extra
+    if (isAccountManager) return;
 
     if (!editingProposal || !formData.title.trim()) return;
 
@@ -250,7 +251,7 @@ export default function Proposals() {
   };
 
   const handleStatusChangeRequest = (proposal: Proposal, newStatus: ProposalStatus) => {
-    if (isAccountManager) return; // Segurança extra
+    if (isAccountManager) return;
     if (proposal.status !== newStatus) {
       setPendingStatusChange({ proposal, newStatus });
       setJustification('');
@@ -299,7 +300,7 @@ export default function Proposals() {
   };
 
   const handleDelete = async (id: string) => {
-    if (isAccountManager) return; // Segurança extra
+    if (isAccountManager) return;
     const proposalToDelete = proposals.find(p => p.id === id);
     try {
       const { error } = await supabase.from('proposals').delete().eq('id', id);
@@ -341,6 +342,12 @@ export default function Proposals() {
     const matchesSearch = proposal.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       proposal.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       proposal.project_code?.toLowerCase().includes(searchTerm.toLowerCase());
+
+    // Se estiver no modo de visualização de Lead Time, filtra as que já foram enviadas
+    if (viewMode === 'lead_time') {
+      return matchesSearch && proposal.delivery_date;
+    }
+
     const matchesStatus = statusFilter === 'all' || proposal.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -351,7 +358,9 @@ export default function Proposals() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-in">
           <div>
             <h1 className="text-3xl font-bold text-[#612cb5]">Propostas</h1>
-            <p className="text-muted-foreground mt-1">Gerencie o pipeline de propostas</p>
+            <p className="text-muted-foreground mt-1">
+              {viewingProposal ? 'Detalhes da Proposta' : 'Gerencie o pipeline de propostas'}
+            </p>
           </div>
 
           {!isAccountManager && (
@@ -367,7 +376,6 @@ export default function Proposals() {
                   <DialogTitle className="text-foreground">Criar Nova Proposta</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
-                  {/* ... FORMULÁRIO DE CRIAÇÃO ... (Mantido igual) */}
                   <div className="space-y-2">
                     <Label htmlFor="title">Título *</Label>
                     <Input
@@ -431,7 +439,6 @@ export default function Proposals() {
                     />
                   </div>
 
-                  {/* Links e Anexos omitidos para brevidade, mas devem ser mantidos no código final */}
                   <div className="space-y-2 bg-secondary/20 p-3 rounded-lg border border-border/50">
                     <Label className="flex items-center gap-2 text-[#612cb5]"><LinkIcon className="h-4 w-4" /> Links Externos</Label>
                     <div className="flex gap-2">
@@ -460,6 +467,19 @@ export default function Proposals() {
             </Dialog>
           )}
         </div>
+
+        {/* Filtro Visual de Modo */}
+        {viewMode === 'lead_time' && (
+          <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-lg flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Clock className="h-5 w-5" />
+              <span className="font-medium">Modo de Análise: Filtrando propostas com data de envio registrada</span>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => window.location.href = '/proposals'} className="text-blue-700 hover:bg-blue-100">
+              Limpar Filtro
+            </Button>
+          </div>
+        )}
 
         {/* Filters */}
         <Card className="glass-card">
@@ -499,16 +519,15 @@ export default function Proposals() {
                 <TableHead className="text-muted-foreground">Título / Código</TableHead>
                 <TableHead className="text-muted-foreground">Status</TableHead>
                 <TableHead className="text-muted-foreground">Última Justificativa</TableHead>
-                <TableHead className="text-muted-foreground">Docs</TableHead>
-                <TableHead className="text-muted-foreground">Prazo</TableHead>
-                <TableHead className="text-muted-foreground">Data de Entrada</TableHead>
+                <TableHead className="text-muted-foreground">Dias até Assinatura</TableHead>
+                <TableHead className="text-muted-foreground">Dias até Start</TableHead>
                 <TableHead className="text-muted-foreground text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredProposals.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
                     <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
                     <p>Nenhuma proposta encontrada</p>
                   </TableCell>
@@ -537,7 +556,6 @@ export default function Proposals() {
                         </div>
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
-                        {/* Se for status restrito OU se o usuário for gestor de contas, mostra apenas o badge (sem interação) */}
                         {isRestrictedStatus || isAccountManager ? (
                           <div title={isAccountManager ? "Sem permissão para alterar" : "Alteração permitida apenas via API"}>
                             {proposal.status?.toLowerCase() === 'edited' ? (
@@ -574,36 +592,19 @@ export default function Proposals() {
                         <div className="flex items-center gap-1 text-muted-foreground text-sm max-w-[200px]" title={proposal.last_justification || 'Sem justificativa'}>
                           <MessageSquare className="h-3 w-3 shrink-0" />
                           <span className="truncate">
-                            {/* CORREÇÃO DO PONTO 1: Exibir sempre a last_justification */}
                             {proposal.last_justification || '-'}
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          {/* @ts-ignore */}
-                          {(proposal.attachments && proposal.attachments.length > 0) && (
-                            <div className="flex items-center gap-1 text-muted-foreground text-xs bg-secondary/50 px-2 py-1 rounded w-fit">
-                              <Paperclip className="h-3 w-3" /> <span className="font-medium">{proposal.attachments.length}</span>
-                            </div>
-                          )}
-                          {(proposal.links && proposal.links.length > 0) && (
-                            <div className="flex items-center gap-1 text-[#612cb5] text-xs bg-[#612cb5]/10 px-2 py-1 rounded w-fit">
-                              <LinkIcon className="h-3 w-3" /> <span className="font-medium">{proposal.links.length}</span>
-                            </div>
-                          )}
-                          {!proposal.attachments?.length && !proposal.links?.length && <span className="text-muted-foreground text-xs pl-2">-</span>}
-                        </div>
+                      <TableCell className="text-center">
+                        <span className="font-medium text-gray-600">
+                          {calculateDaysDiff(proposal.delivery_date, proposal.awaiting_contract_date)}
+                        </span>
                       </TableCell>
-                      <TableCell className="text-foreground font-medium">
-                        {proposal.deadline ? (
-                          <span className={new Date(proposal.deadline) < new Date() && proposal.status !== 'delivered' ? 'text-destructive' : ''}>
-                            {format(new Date(proposal.deadline), "dd/MM/yyyy")}
-                          </span>
-                        ) : '—'}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {format(new Date(proposal.entry_date), "dd/MM/yyyy", { locale: ptBR })}
+                      <TableCell className="text-center">
+                        <span className="font-medium text-gray-600">
+                          {calculateDaysDiff(proposal.awaiting_contract_date, proposal.operational_start_date)}
+                        </span>
                       </TableCell>
                       <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1">
@@ -619,8 +620,6 @@ export default function Proposals() {
                               </Button>
                             }
                           />
-
-                          {/* Esconde menu de edição/exclusão se for Gestão de Contas */}
                           {!isAccountManager && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>

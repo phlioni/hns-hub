@@ -9,7 +9,8 @@ export type ProposalStatus =
   | 'in_review'
   | 'awaiting_code'
   | 'awaiting_contract'
-  | 'operational_start';
+  | 'operational_start'
+  | 'edited';
 
 export type RequestPriority = 'low' | 'medium' | 'high';
 export type RequestStatus = 'pending' | 'in_progress' | 'done';
@@ -42,6 +43,12 @@ export interface Proposal {
   entry_date: string;
   deadline: string | null;
   delivery_date: string | null;
+
+  // Lead Time Fields
+  awaiting_code_date: string | null; // Novo campo
+  awaiting_contract_date: string | null;
+  operational_start_date: string | null;
+
   project_code: string | null;
   last_justification: string | null;
   created_by: string | null;
