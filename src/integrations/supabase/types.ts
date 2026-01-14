@@ -9,7 +9,6 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      // ... outras tabelas (audit_logs, initiatives, etc mantidas) ...
       audit_logs: {
         Row: {
           action: string
@@ -49,110 +48,6 @@ export type Database = {
         }
         Relationships: []
       }
-      proposals: {
-        Row: {
-          attachments: Json | null
-          created_at: string
-          created_by: string | null
-          delivery_date: string | null
-          description: string | null
-          entry_date: string
-          id: string
-          pre_analysis: string | null
-          pre_proposal: string | null
-          project_code: string | null  // Nova coluna adicionada
-          status: Database["public"]["Enums"]["proposal_status"]
-          title: string
-          updated_at: string
-        }
-        Insert: {
-          attachments?: Json | null
-          created_at?: string
-          created_by?: string | null
-          delivery_date?: string | null
-          description?: string | null
-          entry_date?: string
-          id?: string
-          pre_analysis?: string | null
-          pre_proposal?: string | null
-          project_code?: string | null // Nova coluna adicionada
-          status?: Database["public"]["Enums"]["proposal_status"]
-          title: string
-          updated_at?: string
-        }
-        Update: {
-          attachments?: Json | null
-          created_at?: string
-          created_by?: string | null
-          delivery_date?: string | null
-          description?: string | null
-          entry_date?: string
-          id?: string
-          pre_analysis?: string | null
-          pre_proposal?: string | null
-          project_code?: string | null // Nova coluna adicionada
-          status?: Database["public"]["Enums"]["proposal_status"]
-          title?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      // ... requests, user_roles mantidos ...
-      requests: {
-        Row: {
-          assignee_id: string | null
-          created_at: string
-          description: string
-          id: string
-          priority: Database["public"]["Enums"]["request_priority"]
-          requester_name: string
-          status: Database["public"]["Enums"]["request_status"]
-          updated_at: string
-        }
-        Insert: {
-          assignee_id?: string | null
-          created_at?: string
-          description: string
-          id?: string
-          priority?: Database["public"]["Enums"]["request_priority"]
-          requester_name: string
-          status?: Database["public"]["Enums"]["request_status"]
-          updated_at?: string
-        }
-        Update: {
-          assignee_id?: string | null
-          created_at?: string
-          description?: string
-          id?: string
-          priority?: Database["public"]["Enums"]["request_priority"]
-          requester_name?: string
-          status?: Database["public"]["Enums"]["request_status"]
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      user_roles: {
-        Row: {
-          created_at: string
-          id: string
-          role: Database["public"]["Enums"]["app_role"]
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          role?: Database["public"]["Enums"]["app_role"]
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          role?: Database["public"]["Enums"]["app_role"]
-          user_id?: string
-        }
-        Relationships: []
-      }
-      // ... initiatives, key_results, objectives, profiles mantidos ...
       initiatives: {
         Row: {
           completed: boolean
@@ -292,6 +187,111 @@ export type Database = {
           full_name?: string | null
           id?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      proposals: {
+        Row: {
+          attachments: Json | null
+          created_at: string
+          created_by: string | null
+          delivery_date: string | null
+          description: string | null
+          entry_date: string
+          id: string
+          pre_analysis: string | null
+          pre_proposal: string | null
+          project_code: string | null
+          last_justification: string | null
+          status: Database["public"]["Enums"]["proposal_status"]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          attachments?: Json | null
+          created_at?: string
+          created_by?: string | null
+          delivery_date?: string | null
+          description?: string | null
+          entry_date?: string
+          id?: string
+          pre_analysis?: string | null
+          pre_proposal?: string | null
+          project_code?: string | null
+          last_justification?: string | null
+          status?: Database["public"]["Enums"]["proposal_status"]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          attachments?: Json | null
+          created_at?: string
+          created_by?: string | null
+          delivery_date?: string | null
+          description?: string | null
+          entry_date?: string
+          id?: string
+          pre_analysis?: string | null
+          pre_proposal?: string | null
+          project_code?: string | null
+          last_justification?: string | null
+          status?: Database["public"]["Enums"]["proposal_status"]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      requests: {
+        Row: {
+          assignee_id: string | null
+          created_at: string
+          description: string
+          id: string
+          priority: Database["public"]["Enums"]["request_priority"]
+          requester_name: string
+          status: Database["public"]["Enums"]["request_status"]
+          updated_at: string
+        }
+        Insert: {
+          assignee_id?: string | null
+          created_at?: string
+          description: string
+          id?: string
+          priority?: Database["public"]["Enums"]["request_priority"]
+          requester_name: string
+          status?: Database["public"]["Enums"]["request_status"]
+          updated_at?: string
+        }
+        Update: {
+          assignee_id?: string | null
+          created_at?: string
+          description?: string
+          id?: string
+          priority?: Database["public"]["Enums"]["request_priority"]
+          requester_name?: string
+          status?: Database["public"]["Enums"]["request_status"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
         }
         Relationships: []
       }

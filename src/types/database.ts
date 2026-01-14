@@ -1,6 +1,5 @@
 export type AppRole = 'admin' | 'member';
 
-// ATUALIZADO: Adicionado os novos status (in_review, awaiting_code, awaiting_contract, operational_start)
 export type ProposalStatus =
   | 'new'
   | 'understanding'
@@ -13,7 +12,6 @@ export type ProposalStatus =
   | 'operational_start';
 
 export type RequestPriority = 'low' | 'medium' | 'high';
-
 export type RequestStatus = 'pending' | 'in_progress' | 'done';
 
 export interface Profile {
@@ -44,7 +42,8 @@ export interface Proposal {
   entry_date: string;
   deadline: string | null;
   delivery_date: string | null;
-  project_code: string | null; // ATUALIZADO: Nova coluna adicionada
+  project_code: string | null;
+  last_justification: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

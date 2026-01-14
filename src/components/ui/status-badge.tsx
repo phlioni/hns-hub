@@ -25,7 +25,7 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
       case "awaiting_code":
         return { label: "Aguard. Código", color: "bg-pink-100 text-pink-800 border-pink-200" };
       case "awaiting_contract":
-        return { label: "Aguard. Contrato", color: "bg-orange-100 text-orange-800 border-orange-200" };
+        return { label: "Aguard. Assinatura", color: "bg-orange-100 text-orange-800 border-orange-200" };
       case "operational_start":
         return { label: "Start Operacional", color: "bg-emerald-100 text-emerald-800 border-emerald-200" };
       case "delivered":
@@ -61,7 +61,6 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
   );
 }
 
-// Componente que estava faltando e causou o erro em Requests.tsx
 export function PriorityBadge({ priority, className }: PriorityBadgeProps) {
   const getPriorityConfig = (priority: string) => {
     switch (priority) {

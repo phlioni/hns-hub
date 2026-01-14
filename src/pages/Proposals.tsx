@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
   Plus, Search, History, MoreHorizontal, FileText, Trash2, Edit,
-  Paperclip, X, Link as LinkIcon, ExternalLink, Eye
+  Paperclip, X, Link as LinkIcon, ExternalLink, Eye, MessageSquare
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -24,8 +24,6 @@ import { toast } from 'sonner';
 import { Proposal, ProposalStatus } from '@/types/database';
 
 // Status disponíveis para seleção manual na plataforma.
-// "awaiting_contract" e "operational_start" não estão aqui pois só podem ser alterados via API.
-// Novos status adicionados: in_review, awaiting_code
 const statusOptions: { value: ProposalStatus; label: string }[] = [
   { value: 'new', label: 'Novo' },
   { value: 'understanding', label: 'Entendimento' },
@@ -74,6 +72,7 @@ export default function Proposals() {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
+    project_code: '',
     pre_analysis: '',
     pre_proposal: '',
     deadline: '',
@@ -157,12 +156,14 @@ export default function Proposals() {
         .insert({
           title: formData.title,
           description: formData.description,
+          project_code: formData.project_code || null,
           pre_analysis: formData.pre_analysis,
           pre_proposal: formData.pre_proposal,
           deadline: formData.deadline || null,
           attachments: attachments,
           links: links,
           created_by: user?.id,
+          last_justification: 'Criação inicial'
         })
         .select()
         .single();
@@ -196,6 +197,7 @@ export default function Proposals() {
         .update({
           title: formData.title,
           description: formData.description,
+          project_code: formData.project_code || null,
           pre_analysis: formData.pre_analysis,
           pre_proposal: formData.pre_proposal,
           deadline: formData.deadline || null,
@@ -226,22 +228,18 @@ export default function Proposals() {
   };
 
   const resetForm = () => {
-    setFormData({ title: '', description: '', pre_analysis: '', pre_proposal: '', deadline: '' });
+    setFormData({ title: '', description: '', project_code: '', pre_analysis: '', pre_proposal: '', deadline: '' });
     setAttachments([]);
     setLinks([]);
     setNewLink({ name: '', url: '' });
   };
 
   const handleStatusChangeRequest = (proposal: Proposal, newStatus: ProposalStatus) => {
-    const previousStatus = proposal.status;
-
-    if (previousStatus === 'delivered' && newStatus !== 'delivered') {
+    if (proposal.status !== newStatus) {
       setPendingStatusChange({ proposal, newStatus });
       setJustification('');
       return;
     }
-
-    executeStatusChange(proposal, newStatus);
   };
 
   const executeStatusChange = async (proposal: Proposal, newStatus: ProposalStatus, justify?: string) => {
@@ -250,7 +248,10 @@ export default function Proposals() {
     try {
       const { data, error } = await supabase
         .from('proposals')
-        .update({ status: newStatus })
+        .update({
+          status: newStatus,
+          last_justification: justify
+        })
         .eq('id', proposal.id)
         .select()
         .single();
@@ -307,6 +308,7 @@ export default function Proposals() {
     setFormData({
       title: proposal.title,
       description: proposal.description || '',
+      project_code: proposal.project_code || '',
       pre_analysis: proposal.pre_analysis || '',
       pre_proposal: proposal.pre_proposal || '',
       deadline: proposal.deadline ? new Date(proposal.deadline).toISOString().split('T')[0] : '',
@@ -316,10 +318,10 @@ export default function Proposals() {
     setLinks(proposal.links || []);
   };
 
-  // Filter proposals
   const filteredProposals = proposals.filter(proposal => {
     const matchesSearch = proposal.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      proposal.description?.toLowerCase().includes(searchTerm.toLowerCase());
+      proposal.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      proposal.project_code?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || proposal.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -327,7 +329,6 @@ export default function Proposals() {
   return (
     <MainLayout>
       <div className="space-y-6">
-        {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-in">
           <div>
             <h1 className="text-3xl font-bold text-[#612cb5]">Propostas</h1>
@@ -354,6 +355,16 @@ export default function Proposals() {
                     onChange={e => setFormData({ ...formData, title: e.target.value })}
                     placeholder="Digite o título da proposta"
                     className="input-enhanced"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="project_code">Código do Projeto (Opcional)</Label>
+                  <Input
+                    id="project_code"
+                    value={formData.project_code}
+                    onChange={e => setFormData({ ...formData, project_code: e.target.value })}
+                    placeholder="Ex: PROJ-2024-001"
+                    className="input-enhanced font-mono text-sm"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -399,7 +410,6 @@ export default function Proposals() {
                   />
                 </div>
 
-                {/* Links Section */}
                 <div className="space-y-2 bg-secondary/20 p-3 rounded-lg border border-border/50">
                   <Label className="flex items-center gap-2 text-[#612cb5]"><LinkIcon className="h-4 w-4" /> Links Externos</Label>
                   <div className="flex gap-2">
@@ -432,7 +442,6 @@ export default function Proposals() {
                   )}
                 </div>
 
-                {/* Attachments Section */}
                 <div className="space-y-2 bg-secondary/20 p-3 rounded-lg border border-border/50">
                   <Label className="flex items-center gap-2 text-[#612cb5]"><Paperclip className="h-4 w-4" /> Arquivos Anexos</Label>
                   <div className="flex items-center gap-2">
@@ -466,7 +475,7 @@ export default function Proposals() {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar propostas..."
+                  placeholder="Buscar propostas (título ou código)..."
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
                   className="pl-10 input-enhanced"
@@ -481,8 +490,7 @@ export default function Proposals() {
                   {statusOptions.map(option => (
                     <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
                   ))}
-                  {/* Incluir opções de API apenas para filtro caso existam */}
-                  <SelectItem value="awaiting_contract">Aguard. Contrato</SelectItem>
+                  <SelectItem value="awaiting_contract">Aguard. Assinatura</SelectItem>
                   <SelectItem value="operational_start">Start Operacional</SelectItem>
                 </SelectContent>
               </Select>
@@ -495,26 +503,25 @@ export default function Proposals() {
           <Table>
             <TableHeader>
               <TableRow className="border-border hover:bg-transparent">
-                <TableHead className="text-muted-foreground">Título</TableHead>
+                <TableHead className="text-muted-foreground">Título / Código</TableHead>
                 <TableHead className="text-muted-foreground">Status</TableHead>
+                <TableHead className="text-muted-foreground">Última Justificativa</TableHead>
                 <TableHead className="text-muted-foreground">Docs</TableHead>
                 <TableHead className="text-muted-foreground">Prazo</TableHead>
                 <TableHead className="text-muted-foreground">Data de Entrada</TableHead>
-                <TableHead className="text-muted-foreground">Data de Entrega</TableHead>
                 <TableHead className="text-muted-foreground text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredProposals.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
                     <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
                     <p>Nenhuma proposta encontrada</p>
                   </TableCell>
                 </TableRow>
               ) : (
                 filteredProposals.map((proposal, index) => {
-                  // Verificar se o status atual é um dos restritos (API)
                   const isRestrictedStatus = ['awaiting_contract', 'operational_start'].includes(proposal.status);
 
                   return (
@@ -526,10 +533,14 @@ export default function Proposals() {
                     >
                       <TableCell>
                         <div>
-                          <p className="font-medium text-foreground">{proposal.title}</p>
-                          {proposal.description && (
-                            <p className="text-sm text-muted-foreground line-clamp-1">{proposal.description}</p>
-                          )}
+                          <div className="flex items-center gap-2 mb-0.5">
+                            {proposal.project_code && (
+                              <span className="text-[10px] font-mono font-bold text-[#612cb5] bg-[#612cb5]/10 px-1.5 py-0.5 rounded border border-[#612cb5]/20" title="Código do Projeto">
+                                {proposal.project_code}
+                              </span>
+                            )}
+                            <p className="font-medium text-foreground">{proposal.title}</p>
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
@@ -554,15 +565,21 @@ export default function Proposals() {
                         )}
                       </TableCell>
                       <TableCell>
+                        <div className="flex items-center gap-1 text-muted-foreground text-sm max-w-[200px]" title={proposal.last_justification || 'Sem justificativa'}>
+                          <MessageSquare className="h-3 w-3 shrink-0" />
+                          <span className="truncate">{proposal.last_justification || '-'}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
                         <div className="flex gap-2">
                           {/* @ts-ignore */}
                           {(proposal.attachments && proposal.attachments.length > 0) && (
-                            <div className="flex items-center gap-1 text-muted-foreground text-xs bg-secondary/50 px-2 py-1 rounded w-fit" title={`${proposal.attachments.length} anexos`}>
+                            <div className="flex items-center gap-1 text-muted-foreground text-xs bg-secondary/50 px-2 py-1 rounded w-fit">
                               <Paperclip className="h-3 w-3" /> <span className="font-medium">{proposal.attachments.length}</span>
                             </div>
                           )}
                           {(proposal.links && proposal.links.length > 0) && (
-                            <div className="flex items-center gap-1 text-[#612cb5] text-xs bg-[#612cb5]/10 px-2 py-1 rounded w-fit" title={`${proposal.links.length} links`}>
+                            <div className="flex items-center gap-1 text-[#612cb5] text-xs bg-[#612cb5]/10 px-2 py-1 rounded w-fit">
                               <LinkIcon className="h-3 w-3" /> <span className="font-medium">{proposal.links.length}</span>
                             </div>
                           )}
@@ -634,7 +651,14 @@ export default function Proposals() {
             <DialogHeader className="border-b border-border pb-4">
               <div className="flex justify-between items-start">
                 <div>
-                  <DialogTitle className="text-xl text-[#612cb5] mb-1">{viewingProposal?.title}</DialogTitle>
+                  <div className="flex items-center gap-2 mb-1">
+                    {viewingProposal?.project_code && (
+                      <span className="text-xs font-mono font-bold text-[#612cb5] bg-[#612cb5]/10 px-2 py-0.5 rounded border border-[#612cb5]/20">
+                        {viewingProposal.project_code}
+                      </span>
+                    )}
+                    <DialogTitle className="text-xl text-[#612cb5]">{viewingProposal?.title}</DialogTitle>
+                  </div>
                   {viewingProposal && <StatusBadge status={viewingProposal.status} />}
                 </div>
                 <div className="text-right text-xs text-muted-foreground space-y-1">
@@ -709,18 +733,20 @@ export default function Proposals() {
           </DialogContent>
         </Dialog>
 
-        {/* Justification Dialog for Regression from Delivered */}
+        {/* Generic Status Change Dialog with Justification */}
         <Dialog open={!!pendingStatusChange} onOpenChange={(open) => !open && setPendingStatusChange(null)}>
           <DialogContent className="bg-card">
             <DialogHeader>
-              <DialogTitle className="text-[#612cb5]">Justificativa Necessária</DialogTitle>
+              <DialogTitle className="text-[#612cb5]">Justificativa de Alteração</DialogTitle>
               <DialogDescription>
-                Esta proposta já foi marcada como <strong>Entregue</strong>. Para retornar a um estágio anterior, é obrigatório fornecer uma justificativa que ficará registrada nos logs de auditoria.
+                Toda alteração de status deve ser justificada para fins de auditoria.
+                <br />
+                Mudando de <strong>{pendingStatusChange?.proposal.status}</strong> para <strong>{pendingStatusChange?.newStatus}</strong>.
               </DialogDescription>
             </DialogHeader>
             <div className="py-2">
               <Textarea
-                placeholder="Descreva o motivo do retorno (ex: Cliente solicitou alteração de escopo, Erro na homologação...)"
+                placeholder="Descreva o motivo da alteração de status..."
                 value={justification}
                 onChange={e => setJustification(e.target.value)}
                 className="input-enhanced min-h-[100px]"
@@ -733,7 +759,7 @@ export default function Proposals() {
                 onClick={() => pendingStatusChange && executeStatusChange(pendingStatusChange.proposal, pendingStatusChange.newStatus, justification)}
                 disabled={!justification.trim()}
               >
-                Confirmar Retorno
+                Confirmar Alteração
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -753,6 +779,15 @@ export default function Proposals() {
                   value={formData.title}
                   onChange={e => setFormData({ ...formData, title: e.target.value })}
                   className="input-enhanced"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-project_code">Código do Projeto</Label>
+                <Input
+                  id="edit-project_code"
+                  value={formData.project_code}
+                  onChange={e => setFormData({ ...formData, project_code: e.target.value })}
+                  className="input-enhanced font-mono"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
