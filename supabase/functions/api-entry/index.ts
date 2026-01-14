@@ -48,15 +48,25 @@ serve(async (req) => {
 
                 const updatePayload: any = { updated_at: new Date().toISOString() };
 
+                // Inicializa newStatus com o status atual do banco
+                let newStatus = currentProposal.status;
+
                 if (title) updatePayload.title = title;
                 if (description) updatePayload.description = description;
-                if (project_code) updatePayload.project_code = project_code;
                 if (deadline) updatePayload.deadline = deadline;
+
+                // --- ALTERAÇÃO AQUI ---
+                // Se receber o código do projeto, salva o código E muda o status para 'new'
+                if (project_code) {
+                    updatePayload.project_code = project_code;
+                    updatePayload.status = 'new';
+                    newStatus = 'new';
+                }
 
                 // Se vier justificativa no payload, salva na coluna da tabela
                 if (justification) updatePayload.last_justification = justification;
 
-                let newStatus = currentProposal.status;
+                // Se o usuário enviou um status explicitamente no JSON, ele sobrescreve a regra anterior
                 if (status) {
                     if (!allowedStatuses.includes(status)) {
                         throw new Error(`Invalid status: ${status}.`);
@@ -78,7 +88,8 @@ serve(async (req) => {
 
                 // INSERIR AUDIT LOG
                 let action = 'edited';
-                if (status && status !== currentProposal.status) {
+                // Verifica se houve mudança de status (comparando o atual do banco com o novo calculado)
+                if (newStatus !== currentProposal.status) {
                     action = 'status_changed';
                 }
 

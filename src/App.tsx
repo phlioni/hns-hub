@@ -9,12 +9,12 @@ import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Proposals from "./pages/Proposals";
-import OKRs from "./pages/OKRs";
+// OKR REMOVIDO
 import Requests from "./pages/Requests";
 import Settings from "./pages/Settings";
 import AccessControl from "./pages/AccessControl";
 import Reports from "./pages/Reports";
-import Audit from "./pages/Audit"; // NOVO IMPORT
+import Audit from "./pages/Audit";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -58,9 +58,9 @@ function AppRoutes() {
       <Route path="/auth" element={user ? <Navigate to="/" replace /> : <Auth />} />
       <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/proposals" element={<ProtectedRoute><Proposals /></ProtectedRoute>} />
-      <Route path="/okrs" element={<ProtectedRoute><OKRs /></ProtectedRoute>} />
+      {/* ROTA OKR REMOVIDA */}
       <Route path="/requests" element={<ProtectedRoute><Requests /></ProtectedRoute>} />
-      <Route path="/audit" element={<ProtectedRoute><Audit /></ProtectedRoute>} /> {/* NOVA ROTA */}
+      <Route path="/audit" element={<ProtectedRoute><Audit /></ProtectedRoute>} />
       <Route path="/access" element={<ProtectedRoute><AccessControl /></ProtectedRoute>} />
       <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />

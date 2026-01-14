@@ -31,12 +31,7 @@ const navItems = [
     icon: FileText,
     allowedRoles: ['admin', 'member', 'account_manager']
   },
-  {
-    title: 'OKRs',
-    url: '/okrs',
-    icon: Target,
-    allowedRoles: ['admin', 'member']
-  },
+  // OKR ITEM REMOVIDO CONFORME SOLICITADO
   {
     title: 'Solicitações',
     url: '/requests',

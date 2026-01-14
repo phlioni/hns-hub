@@ -101,6 +101,15 @@ export default function Proposals() {
     }
   };
 
+  // Helper para lidar com status "edited"
+  const getStatusLabel = (status: string) => {
+    if (!status) return "";
+    // TRATAMENTO SOLICITADO PARA O STATUS "EDITED"
+    if (status.toLowerCase() === 'edited') return 'Editado';
+    const option = statusOptions.find(opt => opt.value === status);
+    return option ? option.label : status;
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     setIsUploading(true);
@@ -531,7 +540,13 @@ export default function Proposals() {
                         {/* Se for status restrito OU se o usuário for gestor de contas, mostra apenas o badge (sem interação) */}
                         {isRestrictedStatus || isAccountManager ? (
                           <div title={isAccountManager ? "Sem permissão para alterar" : "Alteração permitida apenas via API"}>
-                            <StatusBadge status={proposal.status} />
+                            {proposal.status?.toLowerCase() === 'edited' ? (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200">
+                                Editado
+                              </span>
+                            ) : (
+                              <StatusBadge status={proposal.status} />
+                            )}
                           </div>
                         ) : (
                           <Select
@@ -539,7 +554,13 @@ export default function Proposals() {
                             onValueChange={(value) => handleStatusChangeRequest(proposal, value as ProposalStatus)}
                           >
                             <SelectTrigger className="w-36 border-0 bg-transparent p-0 h-auto focus:ring-0">
-                              <StatusBadge status={proposal.status} />
+                              {proposal.status?.toLowerCase() === 'edited' ? (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200">
+                                  Editado
+                                </span>
+                              ) : (
+                                <StatusBadge status={proposal.status} />
+                              )}
                             </SelectTrigger>
                             <SelectContent>
                               {statusOptions.map(option => (
@@ -552,7 +573,10 @@ export default function Proposals() {
                       <TableCell>
                         <div className="flex items-center gap-1 text-muted-foreground text-sm max-w-[200px]" title={proposal.last_justification || 'Sem justificativa'}>
                           <MessageSquare className="h-3 w-3 shrink-0" />
-                          <span className="truncate">{proposal.last_justification || '-'}</span>
+                          <span className="truncate">
+                            {/* CORREÇÃO DO PONTO 1: Exibir sempre a last_justification */}
+                            {proposal.last_justification || '-'}
+                          </span>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -643,7 +667,15 @@ export default function Proposals() {
                     )}
                     <DialogTitle className="text-xl text-[#612cb5]">{viewingProposal?.title}</DialogTitle>
                   </div>
-                  {viewingProposal && <StatusBadge status={viewingProposal.status} />}
+                  {viewingProposal && (
+                    viewingProposal.status?.toLowerCase() === 'edited' ? (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200">
+                        Editado
+                      </span>
+                    ) : (
+                      <StatusBadge status={viewingProposal.status} />
+                    )
+                  )}
                 </div>
                 <div className="text-right text-xs text-muted-foreground space-y-1">
                   <div>Entrada: {viewingProposal && format(new Date(viewingProposal.entry_date), "dd/MM/yyyy")}</div>
@@ -673,6 +705,14 @@ export default function Proposals() {
                   <p className="text-sm text-muted-foreground whitespace-pre-wrap">{viewingProposal.pre_proposal}</p>
                 </div>
               )}
+
+              {/* Exibição da Última Justificativa */}
+              <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
+                <h4 className="font-semibold text-sm text-foreground mb-1">Última Justificativa / Observação</h4>
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                  {viewingProposal?.last_justification || "Nenhuma justificativa registrada."}
+                </p>
+              </div>
 
               {/* Docs & Links Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
@@ -727,7 +767,7 @@ export default function Proposals() {
               <DialogDescription>
                 Toda alteração de status deve ser justificada para fins de auditoria.
                 <br />
-                Mudando de <strong>{pendingStatusChange?.proposal.status}</strong> para <strong>{pendingStatusChange?.newStatus}</strong>.
+                Mudando de <strong>{pendingStatusChange?.proposal.status === 'edited' ? 'Editado' : pendingStatusChange?.proposal.status}</strong> para <strong>{pendingStatusChange?.newStatus}</strong>.
               </DialogDescription>
             </DialogHeader>
             <div className="py-2">

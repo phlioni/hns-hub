@@ -10,7 +10,7 @@ import {
 import { DateRange } from "react-day-picker";
 import { supabase } from '@/integrations/supabase/client';
 import { MainLayout } from '@/components/layout/MainLayout';
-import { MetricCard } from '@/components/ui/metric-card';
+import { MetricCard } from '@/components/ui/metric-card'; // Mantendo caso queira usar, mas refiz os cards principais abaixo
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -21,7 +21,7 @@ import { cn } from '@/lib/utils';
 import { Proposal } from '@/types/database';
 
 import {
-  Bar, BarChart, CartesianGrid, XAxis, PieChart, Pie, Cell, YAxis, ResponsiveContainer, LabelList, Tooltip
+  Bar, BarChart, CartesianGrid, XAxis, PieChart, Pie, Cell, YAxis, ResponsiveContainer, LabelList, Tooltip, Legend
 } from "recharts";
 import {
   ChartConfig, ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent
@@ -72,7 +72,6 @@ export default function Dashboard() {
 
   const fetchDashboardData = async () => {
     try {
-      // Removida a busca de audit_logs pois o card foi retirado
       const { data, error } = await supabase
         .from('proposals')
         .select('*')
@@ -123,13 +122,19 @@ export default function Dashboard() {
     return true;
   };
 
-  // Aplicar filtro
+  // Aplicar filtro e calcular totais
   const filteredProposals = proposals.filter(p => isDateInFilter(p.created_at));
+  const totalFiltered = filteredProposals.length;
+
+  // Função para calcular porcentagem
+  const calculatePercentage = (count: number) => {
+    if (totalFiltered === 0) return 0;
+    return Math.round((count / totalFiltered) * 100);
+  };
 
   // --- KPI CARDS ---
   const awaitingContractCount = filteredProposals.filter(p => p.status === 'awaiting_contract').length;
   const operationalStartCount = filteredProposals.filter(p => p.status === 'operational_start').length;
-
 
   // --- GRÁFICO 1: PIPELINE ATIVO (PIE CHART - COM SEQUÊNCIA HORÁRIA) ---
   const processPipelinePie = () => {
@@ -151,7 +156,6 @@ export default function Dashboard() {
   };
 
   const pipelinePieData = processPipelinePie();
-
 
   // --- NOVO GRÁFICO: CICLO DE VIDA GERAL (BARRA FULL WIDTH) ---
   const processLifecycleBar = () => {
@@ -180,7 +184,6 @@ export default function Dashboard() {
   };
 
   const lifecycleBarData = processLifecycleBar();
-
 
   // --- SLA BAR CHART (ENTREGUES) ---
   const processDeliveryMetrics = () => {
@@ -226,21 +229,21 @@ export default function Dashboard() {
 
   return (
     <MainLayout>
-      <div className="space-y-8 pb-10">
+      <div className="space-y-8 pb-10 bg-gray-50/30 p-6 rounded-xl min-h-screen">
 
         {/* HEADER & FILTER BAR */}
-        <div className="flex flex-col xl:flex-row justify-between items-start xl:items-end gap-4 animate-fade-in bg-card/50 p-4 rounded-lg border shadow-sm">
+        <div className="flex flex-col xl:flex-row justify-between items-start xl:items-end gap-4 animate-fade-in bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
           <div>
-            <h2 className="text-2xl font-bold text-[#612cb5]">Dashboard Gerencial</h2>
-            <p className="text-muted-foreground">Visão consolidada por período.</p>
+            <h2 className="text-3xl font-bold text-[#612cb5] tracking-tight">Dashboard Gerencial</h2>
+            <p className="text-muted-foreground mt-1">Visão consolidada por período.</p>
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3 items-end sm:items-center w-full xl:w-auto">
             <div className="flex items-center gap-2">
               <Filter className="w-4 h-4 text-[#612cb5]" />
-              <span className="text-sm font-medium hidden sm:inline">Filtrar por:</span>
+              <span className="text-sm font-medium hidden sm:inline text-gray-600">Filtrar por:</span>
               <Select value={filterType} onValueChange={(v: FilterType) => setFilterType(v)}>
-                <SelectTrigger className="w-[140px] h-9">
+                <SelectTrigger className="w-[140px] h-9 bg-white">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -254,7 +257,7 @@ export default function Dashboard() {
             <div className="flex-1 sm:flex-none">
               {filterType === 'preset' && (
                 <Select value={presetPeriod} onValueChange={(v: PresetPeriod) => setPresetPeriod(v)}>
-                  <SelectTrigger className="w-[180px] h-9">
+                  <SelectTrigger className="w-[180px] h-9 bg-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -272,7 +275,7 @@ export default function Dashboard() {
                   type="month"
                   value={selectedMonth}
                   onChange={(e) => setSelectedMonth(e.target.value)}
-                  className="w-[180px] h-9 block"
+                  className="w-[180px] h-9 block bg-white"
                 />
               )}
 
@@ -283,7 +286,7 @@ export default function Dashboard() {
                       id="date"
                       variant={"outline"}
                       className={cn(
-                        "w-[240px] justify-start text-left font-normal h-9",
+                        "w-[240px] justify-start text-left font-normal h-9 bg-white",
                         !dateRange && "text-muted-foreground"
                       )}
                     >
@@ -323,16 +326,16 @@ export default function Dashboard() {
             SEÇÃO 1: FLUXO OPERACIONAL (ROSCA E SLA)
         ===================================================================================== */}
         <section className="space-y-4 animate-slide-up" style={{ animationDelay: '100ms' }}>
-          <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
             <Activity className="h-5 w-5 text-[#612cb5]" /> Fluxo Operacional
           </h3>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
             {/* GRÁFICO 1: EVOLUÇÃO PIPELINE (PIE CHART - ROSCA) */}
-            <Card className="glass-card">
+            <Card className="bg-white border-none shadow-sm hover:shadow-md transition-all duration-300">
               <CardHeader>
-                <CardTitle className="text-base">Pipeline Ativo</CardTitle>
+                <CardTitle className="text-base text-gray-700">Pipeline Ativo</CardTitle>
                 <CardDescription>Volume de propostas por etapa (Sequencial)</CardDescription>
               </CardHeader>
               <CardContent>
@@ -349,6 +352,8 @@ export default function Dashboard() {
                           outerRadius={100}
                           paddingAngle={2}
                           strokeWidth={2}
+                          startAngle={90} // INÍCIO EM 90 GRAUS (12h)
+                          endAngle={-270} // FIM EM -270 PARA COMPLETAR O SENTIDO HORÁRIO
                         >
                           {pipelinePieData.map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={entry.fill} />
@@ -363,10 +368,10 @@ export default function Dashboard() {
                   {pipelinePieData.length > 0 && (
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none pb-12">
                       <div className="text-center">
-                        <span className="text-3xl font-bold text-foreground">
+                        <span className="text-3xl font-bold text-gray-800">
                           {pipelinePieData.reduce((acc, curr) => acc + curr.value, 0)}
                         </span>
-                        <p className="text-xs text-muted-foreground uppercase">Propostas</p>
+                        <p className="text-xs text-muted-foreground uppercase font-medium">Propostas</p>
                       </div>
                     </div>
                   )}
@@ -375,17 +380,17 @@ export default function Dashboard() {
             </Card>
 
             {/* BAR CHART SLA */}
-            <Card className="glass-card">
+            <Card className="bg-white border-none shadow-sm hover:shadow-md transition-all duration-300">
               <CardHeader>
-                <CardTitle className="text-base">SLA de Entregas</CardTitle>
+                <CardTitle className="text-base text-gray-700">SLA de Entregas</CardTitle>
                 <CardDescription>Volume de entregas no período</CardDescription>
               </CardHeader>
               <CardContent>
                 {deliveryChartData.length > 0 ? (
                   <ChartContainer config={chartConfig} className="h-[300px] w-full">
                     <BarChart accessibilityLayer data={deliveryChartData}>
-                      <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.2} />
-                      <XAxis dataKey="name" tickLine={false} tickMargin={10} axisLine={false} />
+                      <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.2} stroke="#e5e7eb" />
+                      <XAxis dataKey="name" tickLine={false} tickMargin={10} axisLine={false} tick={{ fill: '#6b7280' }} />
                       <ChartTooltip content={<ChartTooltipContent indicator="dashed" />} />
                       <ChartLegend content={<ChartLegendContent />} />
                       <Bar dataKey="one_day" stackId="a" fill="var(--color-one_day)" radius={[0, 0, 4, 4]} />
@@ -406,42 +411,64 @@ export default function Dashboard() {
             SEÇÃO 2: GESTÃO & INTEGRAÇÃO (CARDS + CICLO DE VIDA COMPLETO)
         ===================================================================================== */}
         <section className="space-y-4 animate-slide-up" style={{ animationDelay: '200ms' }}>
-          <h3 className="text-lg font-semibold text-foreground flex items-center gap-2 border-t pt-6">
+          <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2 border-t border-gray-200/60 pt-6">
             <Briefcase className="h-5 w-5 text-[#f59e0b]" /> Indicadores de Status
           </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* CARDS */}
-            <MetricCard
-              title="Aguard. Assinatura"
-              value={awaitingContractCount}
-              subtitle="Total no período"
-              icon={FileText}
-              trend="neutral"
-            />
-            <MetricCard
-              title="Start Operacional"
-              value={operationalStartCount}
-              subtitle="Total no período"
-              icon={PlayCircle}
-              trend="up"
-            />
+            {/* CARD 1 - Aguardando Assinatura */}
+            <Card className="bg-white border-none shadow-sm p-2">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Aguard. Assinatura</p>
+                  <div className="flex items-baseline gap-2 mt-2">
+                    <h4 className="text-3xl font-bold text-gray-900">{awaitingContractCount}</h4>
+                    <span className="text-sm font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                      {calculatePercentage(awaitingContractCount)}%
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">do total selecionado</p>
+                </div>
+                <div className="h-12 w-12 bg-amber-50 rounded-lg flex items-center justify-center">
+                  <FileText className="h-6 w-6 text-amber-500" />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* CARD 2 - Start Operacional */}
+            <Card className="bg-white border-none shadow-sm p-2">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Start Operacional</p>
+                  <div className="flex items-baseline gap-2 mt-2">
+                    <h4 className="text-3xl font-bold text-gray-900">{operationalStartCount}</h4>
+                    <span className="text-sm font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                      {calculatePercentage(operationalStartCount)}%
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">do total selecionado</p>
+                </div>
+                <div className="h-12 w-12 bg-emerald-50 rounded-lg flex items-center justify-center">
+                  <PlayCircle className="h-6 w-6 text-emerald-500" />
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
-          {/* GRÁFICO 3: CICLO DE VIDA DAS PROPOSTAS (BAR CHART FULL WIDTH) */}
-          <Card className="glass-card w-full mt-6">
-            <CardHeader className="py-4">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-primary" />
+          {/* GRÁFICO 3: CICLO DE VIDA DAS PROPOSTAS (MODERNO - COR ÚNICA) */}
+          <Card className="bg-white border-none shadow-sm w-full mt-6">
+            <CardHeader className="py-6 border-b border-gray-100">
+              <CardTitle className="text-lg flex items-center gap-2 text-gray-800">
+                <BarChart3 className="w-5 h-5 text-[#612cb5]" />
                 Ciclo de Vida das Propostas (Visão Geral)
               </CardTitle>
               <CardDescription>Quantidade de propostas em cada etapa do fluxo</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-6">
               {lifecycleBarData.length > 0 ? (
                 <ChartContainer config={chartConfig} className="h-[400px] w-full">
                   <BarChart data={lifecycleBarData} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
-                    <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.2} />
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.2} stroke="#e5e7eb" />
                     <XAxis
                       dataKey="name"
                       tickLine={false}
@@ -451,18 +478,18 @@ export default function Dashboard() {
                       interval={0}
                       angle={-15}
                       textAnchor="end"
+                      tick={{ fill: '#6b7280' }}
                     />
-                    <YAxis tickLine={false} axisLine={false} fontSize={12} allowDecimals={false} />
+                    <YAxis tickLine={false} axisLine={false} fontSize={12} allowDecimals={false} tick={{ fill: '#6b7280' }} />
                     <ChartTooltip cursor={{ fill: 'transparent' }} content={<ChartTooltipContent />} />
                     <Bar
                       dataKey="count"
-                      radius={[4, 4, 0, 0]}
+                      fill="#612cb5" // COR SOLICITADA
+                      radius={[4, 4, 0, 0]} // BORDAS ARREDONDADAS
                       barSize={60}
+                      animationDuration={1500}
                     >
-                      <LabelList dataKey="count" position="top" />
-                      {lifecycleBarData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                      ))}
+                      <LabelList dataKey="count" position="top" fill="#6b7280" fontSize={12} />
                     </Bar>
                   </BarChart>
                 </ChartContainer>
