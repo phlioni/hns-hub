@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  format, differenceInBusinessDays, parseISO, subMonths, isAfter, startOfDay, endOfDay, isWithinInterval, isSameMonth, isSameYear, subDays, differenceInDays
+  format, differenceInBusinessDays, parseISO, subMonths, isAfter, startOfDay, endOfDay, isWithinInterval, isSameMonth, isSameYear, subDays
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
-  FileText, Activity, Clock, Briefcase, PlayCircle, Filter, Calendar as CalendarIcon, TrendingUp, Timer
+  FileText, Activity, Briefcase, PlayCircle, Filter, Calendar as CalendarIcon, BarChart3
 } from 'lucide-react';
 import { DateRange } from "react-day-picker";
 import { supabase } from '@/integrations/supabase/client';
@@ -18,10 +18,10 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { AuditLog, Proposal } from '@/types/database';
+import { Proposal } from '@/types/database';
 
 import {
-  Bar, BarChart, CartesianGrid, XAxis, PieChart, Pie, Cell, LineChart, Line, YAxis, Legend, ResponsiveContainer, LabelList
+  Bar, BarChart, CartesianGrid, XAxis, PieChart, Pie, Cell, YAxis, ResponsiveContainer, LabelList, Tooltip
 } from "recharts";
 import {
   ChartConfig, ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent
@@ -35,6 +35,10 @@ const chartConfig = {
   understanding: { label: "Entendimento", color: "hsl(var(--status-understanding))" },
   construction: { label: "Construção", color: "hsl(var(--status-construction))" },
   in_review: { label: "Em Revisão", color: "#8b5cf6" }, // Roxo
+
+  // Novos Status para o Gráfico de Ciclo de Vida
+  awaiting_contract: { label: "Aguard. Assinatura", color: "#f59e0b" }, // Laranja
+  operational_start: { label: "Start Operacional", color: "#10b981" }, // Verde Esmeralda
 
   // SLA Colors
   one_day: { label: "Até 1 dia útil", color: "#22c55e" },
@@ -51,7 +55,6 @@ type PresetPeriod = '30d' | '90d' | '6m' | '1y' | 'all';
 export default function Dashboard() {
   const navigate = useNavigate();
   const [proposals, setProposals] = useState<Proposal[]>([]);
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
 
   // --- ESTADOS DO FILTRO ---
@@ -69,13 +72,15 @@ export default function Dashboard() {
 
   const fetchDashboardData = async () => {
     try {
-      const [proposalsRes, logsRes] = await Promise.all([
-        supabase.from('proposals').select('*').order('created_at', { ascending: false }),
-        supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(20),
-      ]);
+      // Removida a busca de audit_logs pois o card foi retirado
+      const { data, error } = await supabase
+        .from('proposals')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-      if (proposalsRes.data) setProposals(proposalsRes.data as Proposal[]);
-      if (logsRes.data) setAuditLogs(logsRes.data as AuditLog[]);
+      if (error) throw error;
+      if (data) setProposals(data as Proposal[]);
+
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
     } finally {
@@ -120,34 +125,61 @@ export default function Dashboard() {
 
   // Aplicar filtro
   const filteredProposals = proposals.filter(p => isDateInFilter(p.created_at));
-  const filteredLogs = auditLogs.filter(l => isDateInFilter(l.created_at));
 
   // --- KPI CARDS ---
   const awaitingContractCount = filteredProposals.filter(p => p.status === 'awaiting_contract').length;
   const operationalStartCount = filteredProposals.filter(p => p.status === 'operational_start').length;
 
 
-  // --- GRÁFICO 1: PIPELINE ATIVO (PIE CHART - COM SEQUÊNCIA) ---
+  // --- GRÁFICO 1: PIPELINE ATIVO (PIE CHART - COM SEQUÊNCIA HORÁRIA) ---
   const processPipelinePie = () => {
-    // Sequência exata solicitada
+    // Sequência exata solicitada (Sentido Horário)
     const sequence = ['awaiting_code', 'new', 'understanding', 'construction', 'in_review'];
 
-    // Filtra propostas que têm um desses status
     const relevantProposals = filteredProposals.filter(p => sequence.includes(p.status));
 
-    // Monta o array de dados respeitando a ordem do array 'sequence'
     return sequence.map(status => {
       const count = relevantProposals.filter(p => p.status === status).length;
       return {
         name: status,
         value: count,
-        // @ts-ignore - Pega a cor do config
-        fill: chartConfig[status]?.color || "#ccc"
+        // @ts-ignore
+        fill: chartConfig[status]?.color || "#ccc",
+        label: chartConfig[status as keyof typeof chartConfig]?.label // Para tooltip
       };
-    }).filter(d => d.value > 0); // Opcional: remover fatias vazias para não poluir
+    }).filter(d => d.value > 0);
   };
 
   const pipelinePieData = processPipelinePie();
+
+
+  // --- NOVO GRÁFICO: CICLO DE VIDA GERAL (BARRA FULL WIDTH) ---
+  const processLifecycleBar = () => {
+    // Lista completa de status solicitada
+    const sequence = [
+      'awaiting_code',
+      'new',
+      'understanding',
+      'construction',
+      'in_review',
+      'awaiting_contract',
+      'operational_start'
+    ];
+
+    return sequence.map(status => {
+      const count = filteredProposals.filter(p => p.status === status).length;
+      return {
+        statusKey: status,
+        // @ts-ignore
+        name: chartConfig[status]?.label || status,
+        count: count,
+        // @ts-ignore
+        fill: chartConfig[status]?.color || "#8884d8"
+      };
+    });
+  };
+
+  const lifecycleBarData = processLifecycleBar();
 
 
   // --- SLA BAR CHART (ENTREGUES) ---
@@ -181,49 +213,6 @@ export default function Dashboard() {
     return Object.values(grouped);
   };
   const deliveryChartData = processDeliveryMetrics();
-
-
-  // --- GRÁFICO 2: GESTÃO - TEMPO MÉDIO DE CICLO (Cycle Time) ---
-  const processCycleTime = () => {
-    const delivered = proposals.filter(p =>
-      p.status === 'delivered' &&
-      p.delivery_date &&
-      p.entry_date &&
-      isDateInFilter(p.delivery_date)
-    );
-
-    const grouped: Record<string, { name: string, totalDays: number, count: number }> = {};
-
-    delivered.forEach(p => {
-      const deliveryDate = parseISO(p.delivery_date!);
-      const entryDate = parseISO(p.entry_date);
-      const key = format(deliveryDate, 'MMM/yy', { locale: ptBR });
-
-      if (!grouped[key]) grouped[key] = { name: key, totalDays: 0, count: 0 };
-
-      const days = differenceInBusinessDays(deliveryDate, entryDate);
-      grouped[key].totalDays += (days > 0 ? days : 0);
-      grouped[key].count += 1;
-    });
-
-    return Object.values(grouped).map(item => ({
-      name: item.name,
-      avg_days: item.count > 0 ? Number((item.totalDays / item.count).toFixed(1)) : 0
-    }));
-  };
-  const cycleTimeData = processCycleTime();
-
-
-  const formatAction = (action: string) => {
-    const map: Record<string, string> = {
-      'created': 'Criou',
-      'updated': 'Atualizou',
-      'edited': 'Editado',
-      'deleted': 'Removeu',
-      'status_changed': 'Alterou status'
-    };
-    return map[action] || action;
-  };
 
   if (loading) {
     return (
@@ -331,7 +320,7 @@ export default function Dashboard() {
         </div>
 
         {/* =====================================================================================
-            SEÇÃO 1: FLUXO OPERACIONAL
+            SEÇÃO 1: FLUXO OPERACIONAL (ROSCA E SLA)
         ===================================================================================== */}
         <section className="space-y-4 animate-slide-up" style={{ animationDelay: '100ms' }}>
           <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
@@ -414,92 +403,74 @@ export default function Dashboard() {
         </section>
 
         {/* =====================================================================================
-            SEÇÃO 2: GESTÃO & INTEGRAÇÃO
+            SEÇÃO 2: GESTÃO & INTEGRAÇÃO (CARDS + CICLO DE VIDA COMPLETO)
         ===================================================================================== */}
         <section className="space-y-4 animate-slide-up" style={{ animationDelay: '200ms' }}>
           <h3 className="text-lg font-semibold text-foreground flex items-center gap-2 border-t pt-6">
-            <Briefcase className="h-5 w-5 text-[#f59e0b]" /> Gestão de Contas
+            <Briefcase className="h-5 w-5 text-[#f59e0b]" /> Indicadores de Status
           </h3>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* CARDS */}
-            <div className="space-y-6 md:col-span-1">
-              <MetricCard
-                title="Aguard. Assinatura"
-                value={awaitingContractCount}
-                subtitle="Total no período"
-                icon={FileText}
-                trend="neutral"
-              />
-              <MetricCard
-                title="Start Operacional"
-                value={operationalStartCount}
-                subtitle="Total no período"
-                icon={PlayCircle}
-                trend="up"
-              />
-            </div>
-
-            {/* GRÁFICO 2: CICLO DE VIDA */}
-            <Card className="glass-card md:col-span-2">
-              <CardHeader className="py-4">
-                <CardTitle className="text-sm">Performance de Ciclo de Vida</CardTitle>
-                <CardDescription>Tempo médio de entrega (em dias úteis) por mês</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {cycleTimeData.length > 0 ? (
-                  <ChartContainer config={chartConfig} className="h-[300px] w-full">
-                    <BarChart data={cycleTimeData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                      <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.2} />
-                      <XAxis dataKey="name" tickLine={false} axisLine={false} tickMargin={8} fontSize={12} />
-                      <YAxis tickLine={false} axisLine={false} fontSize={12} width={30} />
-                      <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
-                      <Bar dataKey="avg_days" fill="var(--color-avg_days)" radius={[4, 4, 0, 0]} barSize={40}>
-                        {/* @ts-ignore */}
-                        <LabelList position="top" offset={10} className="fill-foreground" fontSize={12} formatter={(value) => `${value}d`} />
-                      </Bar>
-                    </BarChart>
-                  </ChartContainer>
-                ) : (
-                  <div className="h-[300px] flex items-center justify-center text-muted-foreground text-sm">Sem dados de entrega no período</div>
-                )}
-              </CardContent>
-            </Card>
-
+            <MetricCard
+              title="Aguard. Assinatura"
+              value={awaitingContractCount}
+              subtitle="Total no período"
+              icon={FileText}
+              trend="neutral"
+            />
+            <MetricCard
+              title="Start Operacional"
+              value={operationalStartCount}
+              subtitle="Total no período"
+              icon={PlayCircle}
+              trend="up"
+            />
           </div>
-        </section>
 
-        {/* LOGS */}
-        <section className="animate-slide-up" style={{ animationDelay: '300ms' }}>
-          <Card className="glass-card bg-[#612cb5]/5 border-[#612cb5]/20 mt-4">
-            <CardHeader className="pb-2 pt-4">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <Activity className="h-4 w-4 text-[#612cb5]" /> Log de Auditoria (Filtrado)
+          {/* GRÁFICO 3: CICLO DE VIDA DAS PROPOSTAS (BAR CHART FULL WIDTH) */}
+          <Card className="glass-card w-full mt-6">
+            <CardHeader className="py-4">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-primary" />
+                Ciclo de Vida das Propostas (Visão Geral)
               </CardTitle>
+              <CardDescription>Quantidade de propostas em cada etapa do fluxo</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                {filteredLogs.slice(0, 5).map((log) => (
-                  <div key={log.id} className="text-xs flex gap-2 items-start">
-                    <div className="min-w-[4px] h-[4px] mt-1.5 rounded-full bg-[#612cb5]" />
-                    <div>
-                      <span className="font-medium text-foreground">{formatAction(log.action)}</span>
-                      <span className="text-muted-foreground mx-1">em</span>
-                      <span className="font-medium text-[#612cb5] line-clamp-1">
-                        {/* @ts-ignore */}
-                        {log.metadata?.entity_title || 'Item'}
-                      </span>
-                      <div className="text-[10px] text-muted-foreground opacity-70">
-                        {format(new Date(log.created_at), "dd/MM HH:mm")} • {log.user_email?.split('@')[0]}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {filteredLogs.length === 0 && (
-                  <div className="text-xs text-muted-foreground">Nenhuma atividade no período.</div>
-                )}
-              </div>
+              {lifecycleBarData.length > 0 ? (
+                <ChartContainer config={chartConfig} className="h-[400px] w-full">
+                  <BarChart data={lifecycleBarData} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.2} />
+                    <XAxis
+                      dataKey="name"
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={10}
+                      fontSize={12}
+                      interval={0}
+                      angle={-15}
+                      textAnchor="end"
+                    />
+                    <YAxis tickLine={false} axisLine={false} fontSize={12} allowDecimals={false} />
+                    <ChartTooltip cursor={{ fill: 'transparent' }} content={<ChartTooltipContent />} />
+                    <Bar
+                      dataKey="count"
+                      radius={[4, 4, 0, 0]}
+                      barSize={60}
+                    >
+                      <LabelList dataKey="count" position="top" />
+                      {lifecycleBarData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ChartContainer>
+              ) : (
+                <div className="h-[300px] flex items-center justify-center text-muted-foreground text-sm">
+                  Sem dados para exibir
+                </div>
+              )}
             </CardContent>
           </Card>
         </section>

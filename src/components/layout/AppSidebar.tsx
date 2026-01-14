@@ -19,13 +19,50 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useState } from 'react';
 
 const navItems = [
-  { title: 'Dashboard', url: '/', icon: LayoutDashboard },
-  { title: 'Propostas', url: '/proposals', icon: FileText },
-  { title: 'OKRs', url: '/okrs', icon: Target },
-  { title: 'Solicitações', url: '/requests', icon: Inbox },
-  { title: 'Auditoria', url: '/audit', icon: ShieldCheck, restricted: true },
-  { title: 'Gestão de Acesso', url: '/access', icon: Shield, restricted: true },
-  { title: 'Configurações', url: '/settings', icon: Settings },
+  {
+    title: 'Dashboard',
+    url: '/',
+    icon: LayoutDashboard,
+    allowedRoles: ['admin', 'member', 'account_manager']
+  },
+  {
+    title: 'Propostas',
+    url: '/proposals',
+    icon: FileText,
+    allowedRoles: ['admin', 'member', 'account_manager']
+  },
+  {
+    title: 'OKRs',
+    url: '/okrs',
+    icon: Target,
+    allowedRoles: ['admin', 'member']
+  },
+  {
+    title: 'Solicitações',
+    url: '/requests',
+    icon: Inbox,
+    allowedRoles: ['admin', 'member']
+  },
+  {
+    title: 'Auditoria',
+    url: '/audit',
+    icon: ShieldCheck,
+    restricted: true,
+    allowedRoles: ['admin']
+  },
+  {
+    title: 'Gestão de Acesso',
+    url: '/access',
+    icon: Shield,
+    restricted: true,
+    allowedRoles: ['admin']
+  },
+  {
+    title: 'Configurações',
+    url: '/settings',
+    icon: Settings,
+    allowedRoles: ['admin', 'member', 'account_manager']
+  },
 ];
 
 export function AppSidebar() {
@@ -52,6 +89,7 @@ export function AppSidebar() {
 
   const getRoleLabel = (role: string | null) => {
     if (role === 'admin') return 'Administrador';
+    if (role === 'account_manager') return 'Gestão de Contas';
     return 'Membro';
   };
 
@@ -67,17 +105,14 @@ export function AppSidebar() {
       <div
         className={cn(
           "h-16 flex items-center justify-between border-b border-sidebar-border shrink-0 transition-all duration-300",
-          // Lógica do Fundo: Roxo se expandido, Padrão se colapsado
           !collapsed ? "bg-[#612cb5] px-4" : "justify-center bg-sidebar px-2"
         )}
       >
         {!collapsed ? (
-          // EXPANDIDO: Texto Branco no fundo Roxo
           <span className="font-bold text-white text-sm leading-tight truncate">
             Centro de Controle<br />e Transparência
           </span>
         ) : (
-          // COLAPSADO: Mantém o ícone pequeno "CCT"
           <div className="w-10 h-8 rounded-lg bg-gradient-primary flex items-center justify-center shrink-0">
             <span className="text-xs font-bold text-primary-foreground">CCT</span>
           </div>
@@ -89,7 +124,6 @@ export function AppSidebar() {
           onClick={() => setCollapsed(!collapsed)}
           className={cn(
             "transition-colors shrink-0",
-            // Lógica do Botão: Branco se expandido (para contrastar com roxo), Padrão se colapsado
             !collapsed
               ? "text-white hover:bg-white/20 hover:text-white ml-auto"
               : "text-sidebar-foreground hover:text-foreground hover:bg-sidebar-accent"
@@ -102,7 +136,11 @@ export function AppSidebar() {
       {/* Navigation */}
       <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto custom-scrollbar">
         {navItems.map((item) => {
-          if (item.restricted && !isMasterUser) return null;
+          // Lógica existente de usuário mestre
+          if (item.restricted && !isMasterUser && role !== 'admin') return null;
+
+          // Nova lógica baseada em roles e allowedRoles
+          if (item.allowedRoles && role && !item.allowedRoles.includes(role) && !isMasterUser) return null;
 
           return (
             <Link

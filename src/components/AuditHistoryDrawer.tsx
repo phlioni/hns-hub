@@ -65,7 +65,7 @@ export function AuditHistoryDrawer({ entityType, entityId, trigger }: AuditHisto
   const getActionLabel = (action: string) => {
     switch (action) {
       case 'created': return 'Criado';
-      case 'updated': return 'Atualizado';
+      case 'updated': return 'Editado';
       case 'deleted': return 'Excluído';
       case 'status_changed': return 'Alteração de Status';
       default: return action;

@@ -22,7 +22,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Loader2, MoreVertical, Search, ShieldAlert, UserCheck, Trash2, Plus, Pencil } from 'lucide-react';
+import { Loader2, MoreVertical, Search, ShieldAlert, UserCheck, Trash2, Plus, Pencil, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
@@ -35,15 +35,16 @@ interface UserProfile {
     avatar_url: string | null;
     created_at: string;
     user_roles: {
-        role: 'admin' | 'member';
+        role: 'admin' | 'member' | 'account_manager';
     }[];
 }
 
+// Atualizado para incluir account_manager
 const createUserSchema = z.object({
     fullName: z.string().min(2, "Nome é obrigatório"),
     email: z.string().email("E-mail inválido"),
     password: z.string().min(6, "Senha deve ter 6 caracteres"),
-    role: z.enum(["admin", "member"]),
+    role: z.enum(["admin", "member", "account_manager"]),
 });
 
 type CreateUserForm = z.infer<typeof createUserSchema>;
@@ -101,7 +102,7 @@ export default function AccessControl() {
 
     // 2. Editar Role
     const updateRoleMutation = useMutation({
-        mutationFn: async ({ userId, newRole }: { userId: string; newRole: 'admin' | 'member' }) => {
+        mutationFn: async ({ userId, newRole }: { userId: string; newRole: 'admin' | 'member' | 'account_manager' }) => {
             const { error } = await supabase
                 .from('user_roles')
                 .update({ role: newRole })
@@ -165,15 +166,14 @@ export default function AccessControl() {
     };
 
     const getRoleBadge = (role: string) => {
-        return role === 'admin' ? (
-            <Badge variant="default" className="bg-primary/20 text-primary hover:bg-primary/30 border-primary/20">
-                Admin
-            </Badge>
-        ) : (
-            <Badge variant="secondary" className="bg-muted text-muted-foreground">
-                Membro
-            </Badge>
-        );
+        switch (role) {
+            case 'admin':
+                return <Badge variant="default" className="bg-primary/20 text-primary hover:bg-primary/30 border-primary/20">Admin</Badge>;
+            case 'account_manager':
+                return <Badge variant="secondary" className="bg-purple-100 text-purple-700 hover:bg-purple-200 border-purple-200">Gestão de Contas</Badge>;
+            default:
+                return <Badge variant="secondary" className="bg-muted text-muted-foreground">Membro</Badge>;
+        }
     };
 
     const getInitials = (name: string | null, email: string) => {
@@ -270,6 +270,7 @@ export default function AccessControl() {
                                                                 <DropdownMenuItem onClick={() => handleEditClick(user)}>
                                                                     <Pencil className="mr-2 h-4 w-4" /> Editar Perfil
                                                                 </DropdownMenuItem>
+
                                                                 {role !== 'admin' && (
                                                                     <DropdownMenuItem
                                                                         onClick={() => updateRoleMutation.mutate({ userId: user.id, newRole: 'admin' })}
@@ -278,6 +279,15 @@ export default function AccessControl() {
                                                                         <ShieldAlert className="mr-2 h-4 w-4" /> Promover a Admin
                                                                     </DropdownMenuItem>
                                                                 )}
+
+                                                                {role !== 'account_manager' && (
+                                                                    <DropdownMenuItem
+                                                                        onClick={() => updateRoleMutation.mutate({ userId: user.id, newRole: 'account_manager' })}
+                                                                    >
+                                                                        <Shield className="mr-2 h-4 w-4" /> Mudar para Gestão de Contas
+                                                                    </DropdownMenuItem>
+                                                                )}
+
                                                                 {role !== 'member' && !isCurrentUser && (
                                                                     <DropdownMenuItem
                                                                         onClick={() => updateRoleMutation.mutate({ userId: user.id, newRole: 'member' })}
@@ -285,6 +295,7 @@ export default function AccessControl() {
                                                                         <UserCheck className="mr-2 h-4 w-4" /> Rebaixar a Membro
                                                                     </DropdownMenuItem>
                                                                 )}
+
                                                                 {!isCurrentUser && (
                                                                     <>
                                                                         <div className="h-px bg-border my-1" />
@@ -335,12 +346,13 @@ export default function AccessControl() {
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Função</Label>
-                                    <Select onValueChange={(val) => createForm.setValue('role', val as 'admin' | 'member')} defaultValue="member">
+                                    <Select onValueChange={(val) => createForm.setValue('role', val as 'admin' | 'member' | 'account_manager')} defaultValue="member">
                                         <SelectTrigger>
                                             <SelectValue placeholder="Selecione" />
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="member">Membro</SelectItem>
+                                            <SelectItem value="account_manager">Gestão de Contas</SelectItem>
                                             <SelectItem value="admin">Administrador</SelectItem>
                                         </SelectContent>
                                     </Select>
