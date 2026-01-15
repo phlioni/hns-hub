@@ -30,12 +30,12 @@ import {
 
 // Configuração de Cores e Labels
 const chartConfig = {
-  awaiting_code: { label: "Aguard. Código", color: "#ec4899" },
+  awaiting_code: { label: "Aguardando Código", color: "#ec4899" },
   new: { label: "Novo", color: "hsl(var(--status-new))" },
   understanding: { label: "Entendimento", color: "hsl(var(--status-understanding))" },
   construction: { label: "Construção", color: "hsl(var(--status-construction))" },
   in_review: { label: "Em Revisão", color: "#8b5cf6" },
-  awaiting_contract: { label: "Aguard. Assinatura", color: "#f59e0b" },
+  awaiting_contract: { label: "Aguardando Assinatura de Contrato", color: "#f59e0b" },
   operational_start: { label: "Start Operacional", color: "#10b981" },
 
   // Cores SLA
@@ -44,9 +44,9 @@ const chartConfig = {
   late: { label: "Fora do Prazo", color: "#ef4444" },
 
   // Lead Time Colors
-  time_code: { label: "Até Aguard. Código", color: "#ec4899" },
-  time_sign: { label: "Envio -> Assinatura", color: "#8b5cf6" },
-  time_start: { label: "Assinatura -> Start", color: "#10b981" }
+  time_code: { label: "Até Aguardando Código", color: "#ec4899" },
+  time_sign: { label: "Envio da Proposta -> Aguardando Assinatura de Contrato", color: "#8b5cf6" },
+  time_start: { label: "Aguardando Assinatura de Contrato -> Start Operacional", color: "#10b981" }
 } satisfies ChartConfig;
 
 type FilterType = 'preset' | 'month' | 'range';
@@ -167,9 +167,9 @@ export default function Dashboard() {
       : 0;
 
     return [
-      { name: "Aguard. Código", value: avgCodeTime, formatted: formatTime(avgCodeTime), fill: "#ec4899" },
-      { name: "Envio -> Assinatura", value: avgSignTime, formatted: formatTime(avgSignTime), fill: "#8b5cf6" },
-      { name: "Assinatura -> Start", value: avgStartTime, formatted: formatTime(avgStartTime), fill: "#10b981" }
+      { name: "Aguardando Código", value: avgCodeTime, formatted: formatTime(avgCodeTime), fill: "#ec4899" },
+      { name: "Envio da Proposta -> Aguardando Assinatura de Contrato", value: avgSignTime, formatted: formatTime(avgSignTime), fill: "#8b5cf6" },
+      { name: "Aguardando Assinatura de Contrato -> Start Operacional", value: avgStartTime, formatted: formatTime(avgStartTime), fill: "#10b981" }
     ];
   };
 
@@ -330,7 +330,7 @@ export default function Dashboard() {
             <Card className="bg-white border-none shadow-sm rounded-xl">
               <CardContent className="p-4 flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Aguard. Código</p>
+                  <p className="text-sm font-medium text-muted-foreground">Aguardando Código</p>
                   <div className="flex items-baseline gap-2 mt-1">
                     <h4 className="text-2xl font-bold text-gray-900">{awaitingCodeCount}</h4>
                     <span className="text-xs font-medium text-pink-600 bg-pink-50 px-2 py-0.5 rounded-full">
@@ -348,7 +348,7 @@ export default function Dashboard() {
             <Card className="bg-white border-none shadow-sm rounded-xl">
               <CardContent className="p-4 flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Aguard. Assinatura</p>
+                  <p className="text-sm font-medium text-muted-foreground">Aguardando Assinatura de Contrato</p>
                   <div className="flex items-baseline gap-2 mt-1">
                     <h4 className="text-2xl font-bold text-gray-900">{awaitingContractCount}</h4>
                     <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
@@ -475,15 +475,15 @@ export default function Dashboard() {
 
                     {/* Barras Empilhadas com Labels de Valor */}
                     <Bar dataKey="one_day" stackId="a" fill="var(--color-one_day)" radius={[0, 0, 0, 0]}>
-                      <LabelList dataKey="one_day" position="center" fill="white" fontSize={10} formatter={(v: number) => v > 0 ? v : ''} />
+                      <LabelList dataKey="one_day" position="center" fill="white" fontSize={14} formatter={(v: number) => v > 0 ? v : ''} />
                     </Bar>
                     <Bar dataKey="five_days" stackId="a" fill="var(--color-five_days)" radius={[0, 0, 0, 0]}>
-                      <LabelList dataKey="five_days" position="center" fill="white" fontSize={10} formatter={(v: number) => v > 0 ? v : ''} />
+                      <LabelList dataKey="five_days" position="center" fill="white" fontSize={14} formatter={(v: number) => v > 0 ? v : ''} />
                     </Bar>
                     <Bar dataKey="late" stackId="a" fill="var(--color-late)" radius={[4, 4, 0, 0]}>
-                      <LabelList dataKey="late" position="center" fill="white" fontSize={10} formatter={(v: number) => v > 0 ? v : ''} />
+                      <LabelList dataKey="late" position="center" fill="white" fontSize={14} formatter={(v: number) => v > 0 ? v : ''} />
                       {/* Total no Topo */}
-                      <LabelList dataKey="total" position="top" fill="#6b7280" fontSize={12} formatter={(v: number) => `Total: ${v}`} />
+                      <LabelList dataKey="total" position="top" fill="#6b7280" fontSize={16} formatter={(v: number) => `Total: ${v}`} />
                     </Bar>
                   </BarChart>
                 </ChartContainer>
