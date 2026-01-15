@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { format, differenceInDays, parseISO } from 'date-fns';
+import { format, differenceInDays, parseISO, differenceInHours, differenceInMinutes } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
   Plus, Search, History, MoreHorizontal, FileText, Trash2, Edit,
-  Paperclip, X, Link as LinkIcon, ExternalLink, Eye, MessageSquare, Clock
+  Paperclip, X, Link as LinkIcon, ExternalLink, Eye, MessageSquare, Clock,
+  CheckCircle2, Circle, CalendarClock, ArrowRight, Binary, PenTool, Hammer, Lock
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -21,8 +22,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { Proposal, ProposalStatus } from '@/types/database';
+import { Proposal, ProposalStatus, AuditLog } from '@/types/database';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 const statusOptions: { value: ProposalStatus; label: string }[] = [
   { value: 'new', label: 'Novo' },
@@ -30,8 +33,18 @@ const statusOptions: { value: ProposalStatus; label: string }[] = [
   { value: 'construction', label: 'Construção' },
   { value: 'in_review', label: 'Em Revisão' },
   { value: 'awaiting_code', label: 'Aguardando Código' },
+  { value: 'awaiting_contract', label: 'Aguardando Assinatura' },
+  { value: 'operational_start', label: 'Start Operacional' },
+  { value: 'execution_forwarded', label: 'Encaminhado p/ Execução' },
   { value: 'cancelled', label: 'Cancelado' },
   { value: 'delivered', label: 'Entregue' },
+];
+
+const automationStatuses = [
+  'awaiting_code',
+  'awaiting_contract',
+  'operational_start',
+  'execution_forwarded'
 ];
 
 interface Attachment {
@@ -54,25 +67,23 @@ export default function Proposals() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  // Verifica se veio com filtro de Lead Time da Dashboard
   const viewMode = searchParams.get('view');
 
-  // Modais
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingProposal, setEditingProposal] = useState<Proposal | null>(null);
   const [viewingProposal, setViewingProposal] = useState<Proposal | null>(null);
 
-  // Status Justification State
+  const [viewingProposalLogs, setViewingProposalLogs] = useState<AuditLog[]>([]);
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+
   const [pendingStatusChange, setPendingStatusChange] = useState<{ proposal: Proposal, newStatus: ProposalStatus } | null>(null);
   const [justification, setJustification] = useState('');
 
-  // Attachments & Links State for Forms
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [links, setLinks] = useState<ExternalLinkItem[]>([]);
   const [newLink, setNewLink] = useState({ name: '', url: '' });
   const [isUploading, setIsUploading] = useState(false);
 
-  // Form state
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -87,6 +98,14 @@ export default function Proposals() {
   useEffect(() => {
     fetchProposals();
   }, []);
+
+  useEffect(() => {
+    if (viewingProposal) {
+      fetchLogsForProposal(viewingProposal.id);
+    } else {
+      setViewingProposalLogs([]);
+    }
+  }, [viewingProposal]);
 
   const fetchProposals = async () => {
     try {
@@ -105,12 +124,95 @@ export default function Proposals() {
     }
   };
 
-  // Função Auxiliar para calcular dias
-  const calculateDaysDiff = (start?: string | null, end?: string | null) => {
-    if (!start || !end) return '-';
-    return `${differenceInDays(parseISO(end), parseISO(start))} dias`;
+  const fetchLogsForProposal = async (proposalId: string) => {
+    setIsLoadingLogs(true);
+    try {
+      const { data, error } = await supabase
+        .from('audit_logs')
+        .select('*')
+        .eq('entity_id', proposalId)
+        .eq('entity_type', 'proposal')
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      setViewingProposalLogs(data as AuditLog[]);
+    } catch (error) {
+      console.error('Erro ao buscar histórico:', error);
+    } finally {
+      setIsLoadingLogs(false);
+    }
   };
 
+  const getTimestampFromLogs = (targetStatus: string, logs: AuditLog[], entryDate?: string): string | null => {
+    if (targetStatus === 'entry' || targetStatus === 'awaiting_code') {
+      const createLog = logs.find(l => l.action === 'created');
+      return createLog ? createLog.created_at : (entryDate || null);
+    }
+    const log = logs.find(l => l.new_status === targetStatus);
+    return log ? log.created_at : null;
+  };
+
+  const calculateMetric = (startDate: string | null, endDate: string | null) => {
+    if (!startDate || !endDate) return { minutes: 0, valid: false };
+    const s = parseISO(startDate);
+    const e = parseISO(endDate);
+    const minutes = differenceInMinutes(e, s);
+    return { minutes, valid: true };
+  };
+
+  const renderMetricValue = (minutes: number) => {
+    if (minutes < 60) {
+      return (
+        <span className="text-2xl font-bold">{Math.max(0, minutes)}m</span>
+      );
+    }
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    return (
+      <div className="flex items-baseline gap-1">
+        <span className="text-2xl font-bold">{hours}h</span>
+        <span className="text-xs font-medium opacity-80">({days}d)</span>
+      </div>
+    );
+  };
+
+  const getProposalMetricsFromLogs = (p: Proposal, logs: AuditLog[]) => {
+    const dateEntry = p.entry_date;
+    const dateCode = getTimestampFromLogs('new', logs);
+    const dateDelivered = getTimestampFromLogs('delivered', logs);
+    const dateContract = getTimestampFromLogs('awaiting_contract', logs);
+    const dateStart = getTimestampFromLogs('operational_start', logs);
+    const dateExecution = getTimestampFromLogs('execution_forwarded', logs);
+
+    return [
+      {
+        label: "Solicitação -> Código",
+        subtitle: "Controladoria",
+        ...calculateMetric(dateEntry, dateCode),
+        color: "bg-pink-50 text-pink-700 border-pink-200"
+      },
+      {
+        label: "Envio -> Assinatura",
+        subtitle: "Comercial",
+        ...calculateMetric(dateDelivered, dateContract),
+        color: "bg-purple-50 text-purple-700 border-purple-200"
+      },
+      {
+        label: "Assinatura -> Start",
+        subtitle: "Gestão de Contas",
+        ...calculateMetric(dateContract, dateStart),
+        color: "bg-emerald-50 text-emerald-700 border-emerald-200"
+      },
+      {
+        label: "Start -> Execução",
+        subtitle: "HNS",
+        ...calculateMetric(dateStart, dateExecution),
+        color: "bg-indigo-50 text-indigo-700 border-indigo-200"
+      }
+    ];
+  };
+
+  // ... (Upload handlers, CRUD actions e outros métodos mantidos) ...
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     setIsUploading(true);
@@ -118,13 +220,10 @@ export default function Proposals() {
     const fileExt = file.name.split('.').pop();
     const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
     const filePath = `${fileName}`;
-
     try {
       const { error: uploadError } = await supabase.storage.from('attachments').upload(filePath, file);
       if (uploadError) throw uploadError;
-
       const { data: { publicUrl } } = supabase.storage.from('attachments').getPublicUrl(filePath);
-
       setAttachments([...attachments, { name: file.name, url: publicUrl, type: file.type }]);
       toast.success('Arquivo anexado com sucesso');
     } catch (error) {
@@ -133,12 +232,6 @@ export default function Proposals() {
     } finally {
       setIsUploading(false);
     }
-  };
-
-  const removeAttachment = (index: number) => {
-    const newAtt = [...attachments];
-    newAtt.splice(index, 1);
-    setAttachments(newAtt);
   };
 
   const addLink = () => {
@@ -150,20 +243,12 @@ export default function Proposals() {
     setNewLink({ name: '', url: '' });
   };
 
-  const removeLink = (index: number) => {
-    const newLnks = [...links];
-    newLnks.splice(index, 1);
-    setLinks(newLnks);
-  };
-
   const handleCreate = async () => {
     if (isAccountManager) return;
-
     if (!formData.title.trim()) {
       toast.error('Título é obrigatório');
       return;
     }
-
     try {
       const { data, error } = await supabase
         .from('proposals')
@@ -177,21 +262,20 @@ export default function Proposals() {
           attachments: attachments,
           links: links,
           created_by: user?.id,
-          last_justification: 'Criação inicial'
+          last_justification: 'Criação inicial via Painel',
+          status: 'awaiting_code',
+          entry_date: new Date().toISOString()
         })
         .select()
         .single();
-
       if (error) throw error;
-
       await logAudit({
         action: 'created',
         entityType: 'proposal',
         entityId: data.id,
         entityTitle: data.title,
-        newStatus: 'new',
+        newStatus: 'awaiting_code',
       });
-
       setProposals([data as Proposal, ...proposals]);
       resetForm();
       setIsCreateOpen(false);
@@ -204,9 +288,7 @@ export default function Proposals() {
 
   const handleUpdate = async () => {
     if (isAccountManager) return;
-
     if (!editingProposal || !formData.title.trim()) return;
-
     try {
       const { data, error } = await supabase
         .from('proposals')
@@ -223,16 +305,13 @@ export default function Proposals() {
         .eq('id', editingProposal.id)
         .select()
         .single();
-
       if (error) throw error;
-
       await logAudit({
         action: 'edited',
         entityType: 'proposal',
         entityId: data.id,
         entityTitle: data.title,
       });
-
       setProposals(proposals.map(p => p.id === data.id ? data as Proposal : p));
       setEditingProposal(null);
       resetForm();
@@ -261,7 +340,6 @@ export default function Proposals() {
 
   const executeStatusChange = async (proposal: Proposal, newStatus: ProposalStatus, justify?: string) => {
     const previousStatus = proposal.status;
-
     try {
       const { data, error } = await supabase
         .from('proposals')
@@ -272,9 +350,7 @@ export default function Proposals() {
         .eq('id', proposal.id)
         .select()
         .single();
-
       if (error) throw error;
-
       await logAudit({
         action: 'status_changed',
         entityType: 'proposal',
@@ -284,9 +360,7 @@ export default function Proposals() {
         newStatus,
         metadata: justify ? { justification: justify } : undefined
       });
-
       setProposals(proposals.map(p => p.id === data.id ? data as Proposal : p));
-
       if (newStatus === 'delivered') {
         toast.info('Proposta marcada como Entregue');
       } else {
@@ -305,14 +379,12 @@ export default function Proposals() {
     try {
       const { error } = await supabase.from('proposals').delete().eq('id', id);
       if (error) throw error;
-
       await logAudit({
         action: 'deleted',
         entityType: 'proposal',
         entityId: id,
         entityTitle: proposalToDelete?.title || 'Desconhecido',
       });
-
       setProposals(proposals.filter(p => p.id !== id));
       toast.success('Proposta excluída com sucesso');
     } catch (error) {
@@ -343,14 +415,44 @@ export default function Proposals() {
       proposal.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       proposal.project_code?.toLowerCase().includes(searchTerm.toLowerCase());
 
-    // Se estiver no modo de visualização de Lead Time, filtra as que já foram enviadas
     if (viewMode === 'lead_time') {
-      return matchesSearch && proposal.delivery_date;
+      const hasDelivery = ['delivered', 'awaiting_contract', 'operational_start', 'execution_forwarded'].includes(proposal.status);
+      return matchesSearch && hasDelivery;
     }
 
     const matchesStatus = statusFilter === 'all' || proposal.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
+
+  const TimelineStep = ({
+    date,
+    label,
+    icon: Icon,
+    isLast = false,
+  }: { date?: string | null, label: string, icon: any, isLast?: boolean }) => {
+    const hasDate = !!date;
+
+    return (
+      <div className="relative flex gap-4 pb-8 last:pb-0">
+        {!isLast && (
+          <div className={`absolute top-8 left-[19px] w-0.5 h-[calc(100%-8px)] ${hasDate ? 'bg-green-500' : 'bg-gray-200'}`} />
+        )}
+        <div className={`relative z-10 w-10 h-10 rounded-full flex items-center justify-center shrink-0 border-2 transition-colors ${hasDate ? 'bg-green-100 border-green-500 text-green-600' : 'bg-gray-50 border-gray-200 text-gray-400'}`}>
+          <Icon className="w-5 h-5" />
+        </div>
+        <div className="flex flex-col pt-1">
+          <span className={`text-sm font-semibold ${hasDate ? 'text-gray-900' : 'text-gray-500'}`}>{label}</span>
+          {hasDate ? (
+            <span className="text-xs text-green-600 font-medium mt-0.5">
+              {format(parseISO(date!), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+            </span>
+          ) : (
+            <span className="text-xs text-muted-foreground mt-0.5">Pendente</span>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <MainLayout>
@@ -378,65 +480,19 @@ export default function Proposals() {
                 <div className="space-y-4 py-4">
                   <div className="space-y-2">
                     <Label htmlFor="title">Título *</Label>
-                    <Input
-                      id="title"
-                      value={formData.title}
-                      onChange={e => setFormData({ ...formData, title: e.target.value })}
-                      placeholder="Digite o título da proposta"
-                      className="input-enhanced"
-                    />
+                    <Input id="title" value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} className="input-enhanced" />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="project_code">Código do Projeto (Opcional)</Label>
-                    <Input
-                      id="project_code"
-                      value={formData.project_code}
-                      onChange={e => setFormData({ ...formData, project_code: e.target.value })}
-                      placeholder="Ex: PROJ-2024-001"
-                      className="input-enhanced font-mono text-sm"
-                    />
+                    <Label htmlFor="project_code">Código do Projeto</Label>
+                    <Input id="project_code" value={formData.project_code} onChange={e => setFormData({ ...formData, project_code: e.target.value })} className="input-enhanced font-mono" />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="deadline">Prazo de Entrega</Label>
-                      <Input
-                        id="deadline"
-                        type="date"
-                        value={formData.deadline}
-                        onChange={e => setFormData({ ...formData, deadline: e.target.value })}
-                        className="input-enhanced"
-                      />
-                    </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="deadline">Prazo</Label>
+                    <Input id="deadline" type="date" value={formData.deadline} onChange={e => setFormData({ ...formData, deadline: e.target.value })} className="input-enhanced" />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="description">Descrição</Label>
-                    <Textarea
-                      id="description"
-                      value={formData.description}
-                      onChange={e => setFormData({ ...formData, description: e.target.value })}
-                      placeholder="Breve descrição da proposta"
-                      className="input-enhanced min-h-[80px]"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="pre_analysis">Pré-Análise</Label>
-                    <Textarea
-                      id="pre_analysis"
-                      value={formData.pre_analysis}
-                      onChange={e => setFormData({ ...formData, pre_analysis: e.target.value })}
-                      placeholder="Análise inicial e descobertas"
-                      className="input-enhanced min-h-[80px]"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="pre_proposal">Pré-Proposta</Label>
-                    <Textarea
-                      id="pre_proposal"
-                      value={formData.pre_proposal}
-                      onChange={e => setFormData({ ...formData, pre_proposal: e.target.value })}
-                      placeholder="Conteúdo preliminar da proposta"
-                      className="input-enhanced min-h-[80px]"
-                    />
+                    <Textarea id="description" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} className="input-enhanced min-h-[80px]" />
                   </div>
 
                   <div className="space-y-2 bg-secondary/20 p-3 rounded-lg border border-border/50">
@@ -468,19 +524,6 @@ export default function Proposals() {
           )}
         </div>
 
-        {/* Filtro Visual de Modo */}
-        {viewMode === 'lead_time' && (
-          <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-lg flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Clock className="h-5 w-5" />
-              <span className="font-medium">Modo de Análise: Filtrando propostas com data de envio registrada</span>
-            </div>
-            <Button variant="ghost" size="sm" onClick={() => window.location.href = '/proposals'} className="text-blue-700 hover:bg-blue-100">
-              Limpar Filtro
-            </Button>
-          </div>
-        )}
-
         {/* Filters */}
         <Card className="glass-card">
           <CardContent className="py-4">
@@ -503,15 +546,13 @@ export default function Proposals() {
                   {statusOptions.map(option => (
                     <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
                   ))}
-                  <SelectItem value="awaiting_contract">Aguard. Assinatura</SelectItem>
-                  <SelectItem value="operational_start">Start Operacional</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </CardContent>
         </Card>
 
-        {/* Table */}
+        {/* Main Table */}
         <Card className="glass-card overflow-hidden">
           <Table>
             <TableHeader>
@@ -519,22 +560,21 @@ export default function Proposals() {
                 <TableHead className="text-muted-foreground">Título / Código</TableHead>
                 <TableHead className="text-muted-foreground">Status</TableHead>
                 <TableHead className="text-muted-foreground">Última Justificativa</TableHead>
-                <TableHead className="text-muted-foreground">Dias até Assinatura</TableHead>
-                <TableHead className="text-muted-foreground">Dias até Start</TableHead>
                 <TableHead className="text-muted-foreground text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredProposals.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+                  <TableCell colSpan={4} className="h-32 text-center text-muted-foreground">
                     <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
                     <p>Nenhuma proposta encontrada</p>
                   </TableCell>
                 </TableRow>
               ) : (
                 filteredProposals.map((proposal, index) => {
-                  const isRestrictedStatus = ['awaiting_contract', 'operational_start'].includes(proposal.status);
+                  const isAutomationStatus = automationStatuses.includes(proposal.status);
+                  const isLockedAwaitingCode = proposal.status === 'awaiting_code' && !proposal.project_code;
 
                   return (
                     <TableRow
@@ -556,12 +596,26 @@ export default function Proposals() {
                         </div>
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
-                        {isRestrictedStatus || isAccountManager ? (
-                          <div title={isAccountManager ? "Sem permissão para alterar" : "Alteração permitida apenas via API"}>
-                            {proposal.status?.toLowerCase() === 'edited' ? (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200">
-                                Editado
-                              </span>
+                        {isAccountManager || isAutomationStatus || isLockedAwaitingCode ? (
+                          <div title={
+                            isAccountManager ? "Sem permissão" :
+                              isLockedAwaitingCode ? "Aguarde a geração do código" :
+                                "Status controlado via automação"
+                          }>
+                            {isLockedAwaitingCode ? (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div className="flex items-center gap-2 cursor-not-allowed opacity-80">
+                                      <StatusBadge status={proposal.status} />
+                                      <Lock className="w-3 h-3 text-muted-foreground" />
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Aguardando geração automática do código</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
                             ) : (
                               <StatusBadge status={proposal.status} />
                             )}
@@ -572,18 +626,15 @@ export default function Proposals() {
                             onValueChange={(value) => handleStatusChangeRequest(proposal, value as ProposalStatus)}
                           >
                             <SelectTrigger className="w-36 border-0 bg-transparent p-0 h-auto focus:ring-0">
-                              {proposal.status?.toLowerCase() === 'edited' ? (
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200">
-                                  Editado
-                                </span>
-                              ) : (
-                                <StatusBadge status={proposal.status} />
-                              )}
+                              <StatusBadge status={proposal.status} />
                             </SelectTrigger>
                             <SelectContent>
-                              {statusOptions.map(option => (
-                                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                              ))}
+                              {statusOptions
+                                .filter(opt => !automationStatuses.includes(opt.value))
+                                .map(option => (
+                                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                ))
+                              }
                             </SelectContent>
                           </Select>
                         )}
@@ -595,16 +646,6 @@ export default function Proposals() {
                             {proposal.last_justification || '-'}
                           </span>
                         </div>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <span className="font-medium text-gray-600">
-                          {calculateDaysDiff(proposal.delivery_date, proposal.awaiting_contract_date)}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <span className="font-medium text-gray-600">
-                          {calculateDaysDiff(proposal.awaiting_contract_date, proposal.operational_start_date)}
-                        </span>
                       </TableCell>
                       <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1">
@@ -629,15 +670,13 @@ export default function Proposals() {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem onClick={() => openEdit(proposal)}>
-                                  <Edit className="h-4 w-4 mr-2" />
-                                  Editar
+                                  <Edit className="h-4 w-4 mr-2" /> Editar
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   className="text-destructive focus:text-destructive"
                                   onClick={() => handleDelete(proposal.id)}
                                 >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Excluir
+                                  <Trash2 className="h-4 w-4 mr-2" /> Excluir
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
@@ -652,120 +691,209 @@ export default function Proposals() {
           </Table>
         </Card>
 
-        {/* View Details Dialog */}
+        {/* --- DETAILED VIEW MODAL --- */}
         <Dialog open={!!viewingProposal} onOpenChange={() => setViewingProposal(null)}>
-          <DialogContent className="sm:max-w-2xl bg-card border-border max-h-[85vh] overflow-y-auto">
-            <DialogHeader className="border-b border-border pb-4">
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    {viewingProposal?.project_code && (
-                      <span className="text-xs font-mono font-bold text-[#612cb5] bg-[#612cb5]/10 px-2 py-0.5 rounded border border-[#612cb5]/20">
-                        {viewingProposal.project_code}
-                      </span>
-                    )}
-                    <DialogTitle className="text-xl text-[#612cb5]">{viewingProposal?.title}</DialogTitle>
-                  </div>
-                  {viewingProposal && (
-                    viewingProposal.status?.toLowerCase() === 'edited' ? (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200">
-                        Editado
-                      </span>
-                    ) : (
+          <DialogContent className="sm:max-w-5xl bg-card border-border h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+            {viewingProposal && (
+              <>
+                {/* Header Reformulado */}
+                <div className="px-6 py-5 border-b bg-gray-50/50 shrink-0">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        {viewingProposal.project_code && (
+                          <span className="text-xs font-mono font-bold text-[#612cb5] bg-[#612cb5]/10 px-2 py-0.5 rounded border border-[#612cb5]/20">
+                            {viewingProposal.project_code}
+                          </span>
+                        )}
+                        <DialogTitle className="text-2xl font-bold text-[#612cb5] leading-none">{viewingProposal.title}</DialogTitle>
+                      </div>
                       <StatusBadge status={viewingProposal.status} />
-                    )
+                    </div>
+                  </div>
+
+                  <div className="flex gap-8 text-sm border-t pt-3 mt-1 border-gray-200">
+                    <div className="flex flex-col">
+                      <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Entrada</span>
+                      <span className="font-medium text-gray-700">{format(new Date(viewingProposal.entry_date), "dd/MM/yyyy 'às' HH:mm")}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Prazo</span>
+                      <span className={`font-medium ${viewingProposal.deadline && new Date(viewingProposal.deadline) < new Date() && viewingProposal.status !== 'delivered' ? 'text-red-600' : 'text-gray-700'}`}>
+                        {viewingProposal.deadline ? format(new Date(viewingProposal.deadline), "dd/MM/yyyy") : 'N/A'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6">
+                  {/* Lead Time Metrics Grid (Carregado via Logs) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                    {isLoadingLogs ? (
+                      <div className="col-span-4 text-center py-4 text-muted-foreground text-sm animate-pulse">Carregando histórico...</div>
+                    ) : (
+                      getProposalMetricsFromLogs(viewingProposal, viewingProposalLogs).map((metric, idx) => (
+                        <div key={idx} className={`border rounded-xl p-3 flex flex-col items-center text-center shadow-sm ${metric.valid ? metric.color : 'bg-gray-50 text-gray-400 border-gray-100'}`}>
+                          <span className="text-[10px] uppercase tracking-wider font-bold mb-1 opacity-80">{metric.label}</span>
+                          {metric.valid ? (
+                            renderMetricValue(metric.minutes)
+                          ) : (
+                            <span className="text-lg font-mono text-gray-300">--</span>
+                          )}
+                          {/* Adicionado Subtítulo da Métrica no Modal */}
+                          <span className="text-[10px] text-gray-500 font-medium mt-1 uppercase tracking-tight">{metric.subtitle}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    {/* Left Column: Proposal Details */}
+                    <div className="lg:col-span-2 space-y-6">
+                      <div className="space-y-4">
+                        <div>
+                          <h4 className="flex items-center gap-2 font-semibold text-gray-900 mb-2">
+                            <FileText className="w-4 h-4 text-[#612cb5]" /> Descrição
+                          </h4>
+                          <div className="bg-gray-50 p-4 rounded-lg border text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                            {viewingProposal.description || "Sem descrição."}
+                          </div>
+                        </div>
+
+                        {(viewingProposal.pre_analysis || viewingProposal.pre_proposal) && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {viewingProposal.pre_analysis && (
+                              <div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100">
+                                <h5 className="font-semibold text-xs text-blue-700 uppercase mb-1">Pré-Análise</h5>
+                                <p className="text-sm text-gray-700">{viewingProposal.pre_analysis}</p>
+                              </div>
+                            )}
+                            {viewingProposal.pre_proposal && (
+                              <div className="bg-purple-50/50 p-3 rounded-lg border border-purple-100">
+                                <h5 className="font-semibold text-xs text-purple-700 uppercase mb-1">Pré-Proposta</h5>
+                                <p className="text-sm text-gray-700">{viewingProposal.pre_proposal}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {/* Links */}
+                          <div className="border rounded-lg p-3">
+                            <h4 className="font-semibold text-xs text-gray-500 uppercase mb-3 flex items-center gap-2">
+                              <LinkIcon className="h-3 w-3" /> Links Externos
+                            </h4>
+                            {viewingProposal.links && viewingProposal.links.length > 0 ? (
+                              <ul className="space-y-2">
+                                {viewingProposal.links.map((link, idx) => (
+                                  <li key={idx} className="flex items-center gap-2">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                                    <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline truncate">
+                                      {link.name}
+                                    </a>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : <span className="text-xs text-gray-400 italic">Nenhum link.</span>}
+                          </div>
+
+                          {/* Attachments */}
+                          <div className="border rounded-lg p-3">
+                            <h4 className="font-semibold text-xs text-gray-500 uppercase mb-3 flex items-center gap-2">
+                              <Paperclip className="h-3 w-3" /> Anexos
+                            </h4>
+                            {/* @ts-ignore */}
+                            {viewingProposal.attachments && viewingProposal.attachments.length > 0 ? (
+                              <ul className="space-y-2">
+                                {/* @ts-ignore */}
+                                {viewingProposal.attachments.map((att, idx) => (
+                                  <li key={idx} className="flex items-center gap-2">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-orange-400" />
+                                    <a href={att.url} target="_blank" rel="noopener noreferrer" className="text-sm text-gray-700 hover:underline truncate">
+                                      {att.name}
+                                    </a>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : <span className="text-xs text-gray-400 italic">Nenhum anexo.</span>}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right Column: Timeline */}
+                    <div className="lg:border-l lg:pl-8">
+                      <h4 className="font-semibold text-gray-900 mb-6 flex items-center gap-2">
+                        <History className="w-4 h-4 text-[#612cb5]" /> Linha do Tempo
+                      </h4>
+                      <div className="space-y-0">
+                        <TimelineStep
+                          label="Solicitação Recebida"
+                          date={viewingProposal.entry_date}
+                          icon={Clock}
+                        />
+
+                        <TimelineStep
+                          label="Código Gerado (Novo)"
+                          date={getTimestampFromLogs('new', viewingProposalLogs)}
+                          icon={Binary}
+                        />
+
+                        {/* Etapa Construção (Regra 4) */}
+                        <TimelineStep
+                          label="Em Construção"
+                          date={getTimestampFromLogs('construction', viewingProposalLogs)}
+                          icon={Hammer}
+                        />
+
+                        <TimelineStep
+                          label="Proposta Enviada"
+                          date={getTimestampFromLogs('delivered', viewingProposalLogs)}
+                          icon={ArrowRight}
+                        />
+
+                        <TimelineStep
+                          label="Aguard. Assinatura"
+                          date={getTimestampFromLogs('awaiting_contract', viewingProposalLogs)}
+                          icon={PenTool}
+                        />
+
+                        <TimelineStep
+                          label="Start Operacional"
+                          date={getTimestampFromLogs('operational_start', viewingProposalLogs)}
+                          icon={CheckCircle2}
+                        />
+
+                        <TimelineStep
+                          label="Encaminhado p/ Execução"
+                          date={getTimestampFromLogs('execution_forwarded', viewingProposalLogs)}
+                          icon={CalendarClock}
+                          isLast={true}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 border-t bg-gray-50 flex justify-end gap-3 shrink-0">
+                  <Button variant="outline" onClick={() => setViewingProposal(null)}>Fechar</Button>
+                  {!isAccountManager && (
+                    <Button onClick={() => { setViewingProposal(null); if (viewingProposal) openEdit(viewingProposal); }} className="bg-[#612cb5] text-white">
+                      Editar Proposta
+                    </Button>
                   )}
                 </div>
-                <div className="text-right text-xs text-muted-foreground space-y-1">
-                  <div>Entrada: {viewingProposal && format(new Date(viewingProposal.entry_date), "dd/MM/yyyy")}</div>
-                  <div>Prazo: {viewingProposal?.deadline ? format(new Date(viewingProposal.deadline), "dd/MM/yyyy") : 'Não definido'}</div>
-                </div>
-              </div>
-            </DialogHeader>
-
-            <div className="space-y-6 py-4">
-              {viewingProposal?.description && (
-                <div>
-                  <h4 className="font-semibold text-sm text-foreground mb-1">Descrição</h4>
-                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{viewingProposal.description}</p>
-                </div>
-              )}
-
-              {viewingProposal?.pre_analysis && (
-                <div className="bg-secondary/20 p-3 rounded-lg">
-                  <h4 className="font-semibold text-sm text-foreground mb-1">Pré-Análise</h4>
-                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{viewingProposal.pre_analysis}</p>
-                </div>
-              )}
-
-              {viewingProposal?.pre_proposal && (
-                <div className="bg-secondary/20 p-3 rounded-lg">
-                  <h4 className="font-semibold text-sm text-foreground mb-1">Pré-Proposta</h4>
-                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{viewingProposal.pre_proposal}</p>
-                </div>
-              )}
-
-              {/* Exibição da Última Justificativa */}
-              <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
-                <h4 className="font-semibold text-sm text-foreground mb-1">Última Justificativa / Observação</h4>
-                <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                  {viewingProposal?.last_justification || "Nenhuma justificativa registrada."}
-                </p>
-              </div>
-
-              {/* Docs & Links Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                {viewingProposal?.links && viewingProposal.links.length > 0 && (
-                  <div className="border border-border rounded-lg p-3">
-                    <h4 className="font-semibold text-xs text-[#612cb5] uppercase mb-2 flex items-center gap-1"><LinkIcon className="h-3 w-3" /> Links</h4>
-                    <ul className="space-y-1">
-                      {viewingProposal.links.map((link, idx) => (
-                        <li key={idx} className="text-sm truncate">
-                          <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1">
-                            <ExternalLink className="h-3 w-3" /> {link.name}
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {/* @ts-ignore */}
-                {viewingProposal?.attachments && viewingProposal.attachments.length > 0 && (
-                  <div className="border border-border rounded-lg p-3">
-                    <h4 className="font-semibold text-xs text-[#612cb5] uppercase mb-2 flex items-center gap-1"><Paperclip className="h-3 w-3" /> Anexos</h4>
-                    <ul className="space-y-1">
-                      {/* @ts-ignore */}
-                      {viewingProposal.attachments.map((att, idx) => (
-                        <li key={idx} className="text-sm truncate">
-                          <a href={att.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1">
-                            <FileText className="h-3 w-3" /> {att.name}
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <DialogFooter className="border-t border-border pt-4">
-              <Button variant="outline" onClick={() => setViewingProposal(null)}>Fechar</Button>
-              {!isAccountManager && (
-                <Button onClick={() => { setViewingProposal(null); if (viewingProposal) openEdit(viewingProposal); }} className="bg-[#612cb5] text-white">Editar</Button>
-              )}
-            </DialogFooter>
+              </>
+            )}
           </DialogContent>
         </Dialog>
 
-        {/* Generic Status Change Dialog with Justification */}
+        {/* Status Change Dialog */}
         <Dialog open={!!pendingStatusChange} onOpenChange={(open) => !open && setPendingStatusChange(null)}>
           <DialogContent className="bg-card">
             <DialogHeader>
               <DialogTitle className="text-[#612cb5]">Justificativa de Alteração</DialogTitle>
               <DialogDescription>
-                Toda alteração de status deve ser justificada para fins de auditoria.
-                <br />
                 Mudando de <strong>{pendingStatusChange?.proposal.status === 'edited' ? 'Editado' : pendingStatusChange?.proposal.status}</strong> para <strong>{pendingStatusChange?.newStatus}</strong>.
               </DialogDescription>
             </DialogHeader>
@@ -790,7 +918,7 @@ export default function Proposals() {
           </DialogContent>
         </Dialog>
 
-        {/* Edit Dialog - Só renderiza se não for account_manager (verificação extra) */}
+        {/* Edit Dialog */}
         {!isAccountManager && (
           <Dialog open={!!editingProposal} onOpenChange={() => setEditingProposal(null)}>
             <DialogContent className="sm:max-w-2xl bg-card border-border max-h-[90vh] overflow-y-auto">
@@ -800,46 +928,20 @@ export default function Proposals() {
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
                   <Label htmlFor="edit-title">Título *</Label>
-                  <Input
-                    id="edit-title"
-                    value={formData.title}
-                    onChange={e => setFormData({ ...formData, title: e.target.value })}
-                    className="input-enhanced"
-                  />
+                  <Input id="edit-title" value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} className="input-enhanced" />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="edit-project_code">Código do Projeto</Label>
-                  <Input
-                    id="edit-project_code"
-                    value={formData.project_code}
-                    onChange={e => setFormData({ ...formData, project_code: e.target.value })}
-                    className="input-enhanced font-mono"
-                  />
+                  <Input id="edit-project_code" value={formData.project_code} onChange={e => setFormData({ ...formData, project_code: e.target.value })} className="input-enhanced font-mono" />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-deadline">Prazo de Entrega</Label>
-                    <Input
-                      id="edit-deadline"
-                      type="date"
-                      value={formData.deadline}
-                      onChange={e => setFormData({ ...formData, deadline: e.target.value })}
-                      className="input-enhanced"
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-deadline">Prazo</Label>
+                  <Input id="edit-deadline" type="date" value={formData.deadline} onChange={e => setFormData({ ...formData, deadline: e.target.value })} className="input-enhanced" />
                 </div>
-                {/* Campos de descrição e outros mantidos... */}
                 <div className="space-y-2">
                   <Label htmlFor="edit-description">Descrição</Label>
-                  <Textarea
-                    id="edit-description"
-                    value={formData.description}
-                    onChange={e => setFormData({ ...formData, description: e.target.value })}
-                    className="input-enhanced min-h-[80px]"
-                  />
+                  <Textarea id="edit-description" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} className="input-enhanced min-h-[80px]" />
                 </div>
-                {/* ...Restante do form... */}
-
                 <div className="flex justify-end gap-3 pt-4">
                   <Button variant="outline" onClick={() => setEditingProposal(null)}>Cancelar</Button>
                   <Button onClick={handleUpdate} className="btn-glow bg-[#612cb5] text-white">Salvar Alterações</Button>

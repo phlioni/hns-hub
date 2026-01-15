@@ -32,51 +32,82 @@ serve(async (req) => {
 
             const allowedStatuses = [
                 'new', 'in_review', 'awaiting_code', 'awaiting_contract', 'operational_start',
-                'understanding', 'construction', 'delivered', 'cancelled'
+                'execution_forwarded', 'understanding', 'construction', 'delivered', 'cancelled'
             ];
 
-            // LOGICA DE ATUALIZAÇÃO (com ID)
+            // =================================================================================
+            // LÓGICA DE ATUALIZAÇÃO (Fluxo: Código -> Novo -> Assinatura -> Start -> Execução)
+            // =================================================================================
             if (id) {
-                // Primeiro, obter o status atual para auditoria
+                // 1. Obter dados atuais para auditoria e lógica condicional
                 const { data: currentProposal, error: fetchError } = await supabase
                     .from('proposals')
-                    .select('status, title')
+                    .select('status, title, code_received_date, awaiting_contract_date, operational_start_date, execution_forwarded_date')
                     .eq('id', id)
                     .single();
 
                 if (fetchError) throw new Error(`Proposal not found: ${fetchError.message}`);
 
                 const updatePayload: any = { updated_at: new Date().toISOString() };
+                const nowISO = new Date().toISOString();
 
-                // Inicializa newStatus com o status atual do banco
                 let newStatus = currentProposal.status;
+                let autoJustification = justification;
 
+                // Campos opcionais básicos
                 if (title) updatePayload.title = title;
                 if (description) updatePayload.description = description;
                 if (deadline) updatePayload.deadline = deadline;
+                if (attachments) updatePayload.attachments = attachments;
 
-                // Se receber o código do projeto, salva o código E muda o status para 'new'
+                // --- CENÁRIO: RECEBIMENTO DE CÓDIGO (Fluxo 2) ---
+                // Se receber o código do projeto, salva o código, muda para 'new' e grava a data
                 if (project_code) {
                     updatePayload.project_code = project_code;
-                    updatePayload.status = 'new';
-                    newStatus = 'new';
+
+                    // Só muda para 'new' se ainda estiver em 'awaiting_code' ou se for forçado
+                    // Isso evita retroceder status se a proposta já estiver adiantada
+                    if (currentProposal.status === 'awaiting_code') {
+                        updatePayload.status = 'new';
+                        newStatus = 'new';
+                        updatePayload.code_received_date = nowISO; // Grava data do código
+                        autoJustification = autoJustification || "Código recebido via automação. Status alterado para Novo.";
+                    }
                 }
 
-                // --- ALTERAÇÃO SOLICITADA ---
-                // Se vier justificativa no payload, usa ela. Se não, usa a mensagem padrão de integração.
-                updatePayload.last_justification = justification || "Alteração via integração externa (API)";
-
-                // Se o usuário enviou um status explicitamente no JSON, ele sobrescreve a regra anterior
+                // --- CENÁRIO: ALTERAÇÃO DE STATUS EXPLÍCITA (Fluxos 4, 5, 6) ---
                 if (status) {
                     if (!allowedStatuses.includes(status)) {
                         throw new Error(`Invalid status: ${status}.`);
                     }
                     updatePayload.status = status;
                     newStatus = status;
+
+                    // Lógica de Datas para Timeline
+                    if (status === 'delivered') {
+                        updatePayload.delivery_date = nowISO;
+                    }
+                    else if (status === 'awaiting_contract') {
+                        // Só atualiza data se ainda não tiver, para preservar o histórico original se reprocessado
+                        if (!currentProposal.awaiting_contract_date) {
+                            updatePayload.awaiting_contract_date = nowISO;
+                        }
+                    }
+                    else if (status === 'operational_start') {
+                        if (!currentProposal.operational_start_date) {
+                            updatePayload.operational_start_date = nowISO;
+                        }
+                    }
+                    else if (status === 'execution_forwarded') {
+                        if (!currentProposal.execution_forwarded_date) {
+                            updatePayload.execution_forwarded_date = nowISO;
+                        }
+                    }
                 }
 
-                if (attachments) updatePayload.attachments = attachments;
+                updatePayload.last_justification = autoJustification || "Alteração via integração externa (API)";
 
+                // Executa o Update
                 result = await supabase
                     .from('proposals')
                     .update(updatePayload)
@@ -88,7 +119,6 @@ serve(async (req) => {
 
                 // INSERIR AUDIT LOG
                 let action = 'edited';
-                // Verifica se houve mudança de status
                 if (newStatus !== currentProposal.status) {
                     action = 'status_changed';
                 }
@@ -102,17 +132,21 @@ serve(async (req) => {
                     new_status: newStatus,
                     metadata: {
                         entity_title: result.data.title,
-                        // Usa a mesma lógica do updatePayload para o log
-                        justification: updatePayload.last_justification
+                        justification: updatePayload.last_justification,
+                        changed_fields: Object.keys(updatePayload)
                     }
                 });
 
             }
-            // LOGICA DE CRIAÇÃO (sem ID)
+            // =================================================================================
+            // LÓGICA DE CRIAÇÃO (Fluxo 1: Nasce como Aguardando Código)
+            // =================================================================================
             else {
                 if (!title) throw new Error('Proposal "title" is required');
 
-                const initialStatus = status || 'new';
+                // Padrão do Fluxo 1: Entra como 'awaiting_code' se não especificado
+                const initialStatus = status || 'awaiting_code';
+
                 if (!allowedStatuses.includes(initialStatus)) {
                     throw new Error(`Invalid status: ${initialStatus}. Allowed: ${allowedStatuses.join(', ')}`);
                 }
@@ -123,17 +157,26 @@ serve(async (req) => {
                     finalDeadline = addBusinessDays(entryDateObj, 5).toISOString();
                 }
 
-                const insertPayload = {
+                const insertPayload: any = {
                     title,
                     description,
                     attachments: attachments || [],
                     status: initialStatus,
                     deadline: finalDeadline,
                     project_code: project_code || null,
-                    // Define padrão para criação também, se não vier justificativa
-                    last_justification: justification || "Criação via integração externa (API)",
+                    last_justification: justification || "Entrada via automação de e-mail (Solicitação)",
                     entry_date: entryDateObj.toISOString(),
                 };
+
+                // Se por acaso já nascer com código (raro no fluxo descrito, mas possível via API direta)
+                if (initialStatus === 'new' || project_code) {
+                    insertPayload.code_received_date = entryDateObj.toISOString();
+                }
+
+                // Se nascer aguardando código, setamos a data específica também para redundância na timeline
+                if (initialStatus === 'awaiting_code') {
+                    insertPayload.awaiting_code_date = entryDateObj.toISOString();
+                }
 
                 result = await supabase.from('proposals').insert(insertPayload).select().single();
 
@@ -154,6 +197,7 @@ serve(async (req) => {
             }
 
         } else if (type === 'request') {
+            // Lógica de Requests mantida igual
             const { requester_name, description, priority } = data
 
             if (!requester_name || !description) {

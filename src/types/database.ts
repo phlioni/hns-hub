@@ -10,7 +10,8 @@ export type ProposalStatus =
   | 'awaiting_code'
   | 'awaiting_contract'
   | 'operational_start'
-  | 'edited';
+  | 'edited'
+  | 'execution_forwarded';
 
 export type RequestPriority = 'low' | 'medium' | 'high';
 export type RequestStatus = 'pending' | 'in_progress' | 'done';
@@ -42,12 +43,9 @@ export interface Proposal {
   status: ProposalStatus;
   entry_date: string;
   deadline: string | null;
-  delivery_date: string | null;
 
-  // Lead Time Fields
-  awaiting_code_date: string | null; // Novo campo
-  awaiting_contract_date: string | null;
-  operational_start_date: string | null;
+  // As datas específicas foram removidas.
+  // O histórico é derivado de AuditLog.
 
   project_code: string | null;
   last_justification: string | null;
