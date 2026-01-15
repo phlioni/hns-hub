@@ -64,7 +64,7 @@ const leadTimeSubtitles: Record<string, string> = {
 // Componente Customizado para o Eixo Y do Gráfico
 const CustomYAxisTick = ({ x, y, payload }: any) => {
   const subtitle = leadTimeSubtitles[payload.value] || "";
-
+  
   return (
     <g transform={`translate(${x},${y})`}>
       <text x={-10} y={-5} textAnchor="end" fill="#4b5563" fontSize={11} fontWeight={500}>
@@ -174,7 +174,7 @@ export default function Dashboard() {
     const log = logs
       .filter(l => l.entity_id === proposalId && l.new_status === status)
       .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0];
-
+    
     return log ? log.created_at : null;
   };
 
@@ -246,7 +246,7 @@ export default function Dashboard() {
       name: chartConfig[key as keyof typeof chartConfig]?.label || key,
       value: filteredProposals.filter(p => p.status === key).length,
       fill: chartConfig[key as keyof typeof chartConfig]?.color
-    })).filter(item => item.value >= 0);
+    })).filter(item => item.value >= 0); 
   };
   const pipelineData = processPipelineData();
   const totalPipelineVolume = pipelineData.reduce((acc, curr) => acc + curr.value, 0);
@@ -256,7 +256,7 @@ export default function Dashboard() {
     // CORREÇÃO: Não filtramos mais por status === 'delivered'.
     // Iteramos sobre TODAS as propostas filtradas pelo período de criação.
     // Verificamos se ela tem data de entrega ou log de entrega.
-
+    
     const grouped: Record<string, { name: string, one_day: number, five_days: number, late: number, total: number }> = {};
 
     filteredProposals.forEach(p => {
@@ -272,7 +272,7 @@ export default function Dashboard() {
 
       // Se não tem data de entrega de jeito nenhum, pula (ainda não foi entregue)
       if (!deliveryDateStr) return;
-
+      
       const deliveryDate = parseISO(deliveryDateStr);
       const entryDate = parseISO(p.entry_date);
       const key = format(deliveryDate, 'MMM/yy', { locale: ptBR });
@@ -283,7 +283,7 @@ export default function Dashboard() {
 
       let isLate = false;
       if (p.deadline && deliveryDate > parseISO(p.deadline)) isLate = true;
-
+      
       const diffDays = Math.floor(differenceInHours(deliveryDate, entryDate) / 24);
 
       if (isLate) grouped[key].late += 1;
@@ -303,7 +303,7 @@ export default function Dashboard() {
     .map(p => {
       const startLog = auditLogs.find(l => l.entity_id === p.id && l.new_status === 'operational_start');
       const dateStr = startLog ? startLog.created_at : p.updated_at;
-
+      
       return {
         id: p.id,
         title: p.title,
@@ -311,7 +311,7 @@ export default function Dashboard() {
         leadTime: formatDuration(differenceInMinutes(new Date(), parseISO(dateStr)))
       };
     })
-    .slice(0, 5);
+    .slice(0, 5); 
 
   if (loading) {
     return (
@@ -410,13 +410,13 @@ export default function Dashboard() {
                     {pipelineData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.fill} stroke="white" strokeWidth={2} />
                     ))}
-
-                    <LabelList
-                      dataKey="value"
-                      position="inside"
-                      className="fill-white font-bold drop-shadow-md"
-                      stroke="none"
-                      fontSize={14}
+                    
+                    <LabelList 
+                      dataKey="value" 
+                      position="inside" 
+                      className="fill-white font-bold drop-shadow-md" 
+                      stroke="none" 
+                      fontSize={14} 
                       formatter={(value: number) => value > 0 ? value : ''}
                     />
 
@@ -450,9 +450,9 @@ export default function Dashboard() {
                       }}
                     />
                   </Pie>
-                  <Legend
-                    layout="horizontal"
-                    verticalAlign="bottom"
+                  <Legend 
+                    layout="horizontal" 
+                    verticalAlign="bottom" 
                     align="center"
                     iconType="circle"
                     wrapperStyle={{ paddingTop: '20px' }}

@@ -28,10 +28,17 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
         return { label: "Aguard. Assinatura", color: "bg-orange-100 text-orange-800 border-orange-200" };
       case "operational_start":
         return { label: "Start Operacional", color: "bg-emerald-100 text-emerald-800 border-emerald-200" };
+
+      // Novo Status Adicionado com label corrigida
+      case "execution_forwarded":
+        return { label: "Execução", color: "bg-cyan-100 text-cyan-800 border-cyan-200" };
+
       case "delivered":
         return { label: "Entregue", color: "bg-green-100 text-green-800 border-green-200" };
       case "cancelled":
         return { label: "Cancelado", color: "bg-slate-100 text-slate-800 border-slate-200" };
+      case "edited":
+        return { label: "Editado", color: "bg-gray-100 text-gray-800 border-gray-200" };
 
       // REQUEST STATUSES
       case "pending":
