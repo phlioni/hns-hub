@@ -16,7 +16,6 @@ serve(async (req) => {
         const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
         const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 
-        // Create a Supabase client with the Auth context of the function
         const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
         const { type, data } = await req.json()
@@ -28,86 +27,61 @@ serve(async (req) => {
         let result;
 
         if (type === 'proposal') {
-            const { id, title, description, attachments, status, deadline, project_code, justification } = data
+            // Adicionado 'idemail' na desestruturação
+            const { id, title, description, attachments, status, deadline, project_code, justification, idemail } = data
 
             const allowedStatuses = [
                 'new', 'in_review', 'awaiting_code', 'awaiting_contract', 'operational_start',
-                'execution_forwarded', 'understanding', 'construction', 'delivered', 'cancelled'
+                'execution_forwarded', 'understanding', 'construction', 'delivered', 'cancelled', 'edited'
             ];
 
             // =================================================================================
-            // LÓGICA DE ATUALIZAÇÃO (Fluxo: Código -> Novo -> Assinatura -> Start -> Execução)
+            // ATUALIZAÇÃO
             // =================================================================================
             if (id) {
-                // 1. Obter dados atuais para auditoria e lógica condicional
                 const { data: currentProposal, error: fetchError } = await supabase
                     .from('proposals')
-                    .select('status, title, code_received_date, awaiting_contract_date, operational_start_date, execution_forwarded_date')
+                    .select('status, title')
                     .eq('id', id)
                     .single();
 
                 if (fetchError) throw new Error(`Proposal not found: ${fetchError.message}`);
 
                 const updatePayload: any = { updated_at: new Date().toISOString() };
-                const nowISO = new Date().toISOString();
 
                 let newStatus = currentProposal.status;
                 let autoJustification = justification;
 
-                // Campos opcionais básicos
                 if (title) updatePayload.title = title;
                 if (description) updatePayload.description = description;
                 if (deadline) updatePayload.deadline = deadline;
                 if (attachments) updatePayload.attachments = attachments;
 
-                // --- CENÁRIO: RECEBIMENTO DE CÓDIGO (Fluxo 2) ---
-                // Se receber o código do projeto, salva o código, muda para 'new' e grava a data
+                // Se vier idemail na atualização (raro, mas possível correção), atualiza também
+                if (idemail) updatePayload.idemail = idemail;
+
+                // --- FLUXO 2: Recebimento de Código (Automático) ---
                 if (project_code) {
                     updatePayload.project_code = project_code;
 
-                    // Só muda para 'new' se ainda estiver em 'awaiting_code' ou se for forçado
-                    // Isso evita retroceder status se a proposta já estiver adiantada
                     if (currentProposal.status === 'awaiting_code') {
                         updatePayload.status = 'new';
                         newStatus = 'new';
-                        updatePayload.code_received_date = nowISO; // Grava data do código
                         autoJustification = autoJustification || "Código recebido via automação. Status alterado para Novo.";
                     }
                 }
 
-                // --- CENÁRIO: ALTERAÇÃO DE STATUS EXPLÍCITA (Fluxos 4, 5, 6) ---
+                // --- OUTROS FLUXOS: Status explícito ---
                 if (status) {
                     if (!allowedStatuses.includes(status)) {
                         throw new Error(`Invalid status: ${status}.`);
                     }
                     updatePayload.status = status;
                     newStatus = status;
-
-                    // Lógica de Datas para Timeline
-                    if (status === 'delivered') {
-                        updatePayload.delivery_date = nowISO;
-                    }
-                    else if (status === 'awaiting_contract') {
-                        // Só atualiza data se ainda não tiver, para preservar o histórico original se reprocessado
-                        if (!currentProposal.awaiting_contract_date) {
-                            updatePayload.awaiting_contract_date = nowISO;
-                        }
-                    }
-                    else if (status === 'operational_start') {
-                        if (!currentProposal.operational_start_date) {
-                            updatePayload.operational_start_date = nowISO;
-                        }
-                    }
-                    else if (status === 'execution_forwarded') {
-                        if (!currentProposal.execution_forwarded_date) {
-                            updatePayload.execution_forwarded_date = nowISO;
-                        }
-                    }
                 }
 
                 updatePayload.last_justification = autoJustification || "Alteração via integração externa (API)";
 
-                // Executa o Update
                 result = await supabase
                     .from('proposals')
                     .update(updatePayload)
@@ -117,9 +91,9 @@ serve(async (req) => {
 
                 if (result.error) throw result.error;
 
-                // INSERIR AUDIT LOG
+                // LOG NO AUDIT
                 let action = 'edited';
-                if (newStatus !== currentProposal.status) {
+                if (newStatus !== currentProposal.status || project_code) {
                     action = 'status_changed';
                 }
 
@@ -133,18 +107,17 @@ serve(async (req) => {
                     metadata: {
                         entity_title: result.data.title,
                         justification: updatePayload.last_justification,
-                        changed_fields: Object.keys(updatePayload)
+                        project_code_assigned: !!project_code
                     }
                 });
 
             }
             // =================================================================================
-            // LÓGICA DE CRIAÇÃO (Fluxo 1: Nasce como Aguardando Código)
+            // CRIAÇÃO
             // =================================================================================
             else {
                 if (!title) throw new Error('Proposal "title" is required');
 
-                // Padrão do Fluxo 1: Entra como 'awaiting_code' se não especificado
                 const initialStatus = status || 'awaiting_code';
 
                 if (!allowedStatuses.includes(initialStatus)) {
@@ -164,25 +137,16 @@ serve(async (req) => {
                     status: initialStatus,
                     deadline: finalDeadline,
                     project_code: project_code || null,
-                    last_justification: justification || "Entrada via automação de e-mail (Solicitação)",
+                    // Adicionado o novo campo aqui
+                    idemail: idemail || null,
+                    last_justification: justification || "Entrada via automação (Solicitação)",
                     entry_date: entryDateObj.toISOString(),
                 };
-
-                // Se por acaso já nascer com código (raro no fluxo descrito, mas possível via API direta)
-                if (initialStatus === 'new' || project_code) {
-                    insertPayload.code_received_date = entryDateObj.toISOString();
-                }
-
-                // Se nascer aguardando código, setamos a data específica também para redundância na timeline
-                if (initialStatus === 'awaiting_code') {
-                    insertPayload.awaiting_code_date = entryDateObj.toISOString();
-                }
 
                 result = await supabase.from('proposals').insert(insertPayload).select().single();
 
                 if (result.error) throw result.error;
 
-                // INSERIR AUDIT LOG
                 await supabase.from('audit_logs').insert({
                     action: 'created',
                     entity_type: 'proposal',
@@ -191,18 +155,15 @@ serve(async (req) => {
                     new_status: initialStatus,
                     metadata: {
                         entity_title: result.data.title,
-                        justification: insertPayload.last_justification
+                        justification: insertPayload.last_justification,
+                        origin_email_id: idemail // Loga o ID do email também nos metadados para facilitar debug
                     }
                 });
             }
 
         } else if (type === 'request') {
-            // Lógica de Requests mantida igual
             const { requester_name, description, priority } = data
-
-            if (!requester_name || !description) {
-                throw new Error('Requester name and description are required for requests')
-            }
+            if (!requester_name || !description) throw new Error('Requester name and description are required')
 
             result = await supabase.from('requests').insert({
                 requester_name,
@@ -212,16 +173,13 @@ serve(async (req) => {
             }).select().single()
 
         } else {
-            throw new Error('Invalid type. Supported types are: "proposal", "request"')
+            throw new Error('Invalid type.')
         }
 
-        if (result.error) {
-            throw result.error
-        }
+        if (result.error) throw result.error
 
         return new Response(JSON.stringify({
             success: true,
-            message: `${type} processed successfully`,
             id: result.data?.id,
             data: result.data
         }), {

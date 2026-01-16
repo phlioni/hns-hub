@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { format, differenceInDays, parseISO, differenceInHours, differenceInMinutes } from 'date-fns';
+import { format, differenceInDays, parseISO, differenceInHours, differenceInMinutes, isSameMonth, startOfMonth, differenceInBusinessDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
   Plus, Search, History, MoreHorizontal, FileText, Trash2, Edit,
   Paperclip, X, Link as LinkIcon, ExternalLink, Eye, MessageSquare, Clock,
-  CheckCircle2, Circle, CalendarClock, ArrowRight, Binary, PenTool, Hammer, Lock
+  CheckCircle2, Circle, CalendarClock, ArrowRight, Binary, PenTool, Hammer, Lock, FilterX
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -40,6 +40,7 @@ const statusOptions: { value: ProposalStatus; label: string }[] = [
   { value: 'delivered', label: 'Entregue' },
 ];
 
+// REGRA 1: Status que não devem aparecer na seleção manual
 const automationStatuses = [
   'awaiting_code',
   'awaiting_contract',
@@ -61,13 +62,27 @@ interface ExternalLinkItem {
 export default function Proposals() {
   const { user, role } = useAuth();
   const { logAudit } = useAuditLog();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Filtros da URL
+  const statusParam = searchParams.get('status');
+  const slaParam = searchParams.get('sla');
+  const monthParam = searchParams.get('month'); // yyyy-MM
+  const viewMode = searchParams.get('view');
+
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  const viewMode = searchParams.get('view');
+  // Estado para armazenar logs de entrega para cálculo de SLA na lista
+  const [deliveryLogs, setDeliveryLogs] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (statusParam) {
+      setStatusFilter(statusParam);
+    }
+  }, [statusParam]);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingProposal, setEditingProposal] = useState<Proposal | null>(null);
@@ -99,6 +114,14 @@ export default function Proposals() {
     fetchProposals();
   }, []);
 
+  // Se houver filtro de SLA ou Mês, precisamos buscar os logs de entrega para filtrar corretamente
+  useEffect(() => {
+    if (slaParam || monthParam) {
+      fetchDeliveryLogs();
+    }
+  }, [slaParam, monthParam]);
+
+  // Busca logs da proposta individual quando aberta
   useEffect(() => {
     if (viewingProposal) {
       fetchLogsForProposal(viewingProposal.id);
@@ -124,6 +147,32 @@ export default function Proposals() {
     }
   };
 
+  const fetchDeliveryLogs = async () => {
+    try {
+      // Busca logs onde o status mudou para 'delivered'
+      const { data, error } = await supabase
+        .from('audit_logs')
+        .select('entity_id, created_at')
+        .eq('entity_type', 'proposal')
+        .eq('new_status', 'delivered');
+
+      if (error) throw error;
+
+      // Cria um mapa: proposal_id -> delivery_date
+      const logMap: Record<string, string> = {};
+      data.forEach((log: any) => {
+        // Se houver múltiplos, pegamos o primeiro (mais antigo) ou último?
+        // Geralmente o primeiro delivered conta.
+        if (!logMap[log.entity_id] || new Date(log.created_at) < new Date(logMap[log.entity_id])) {
+          logMap[log.entity_id] = log.created_at;
+        }
+      });
+      setDeliveryLogs(logMap);
+    } catch (error) {
+      console.error('Erro ao buscar logs de entrega:', error);
+    }
+  };
+
   const fetchLogsForProposal = async (proposalId: string) => {
     setIsLoadingLogs(true);
     try {
@@ -142,6 +191,65 @@ export default function Proposals() {
       setIsLoadingLogs(false);
     }
   };
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('all');
+    setSearchParams({});
+  };
+
+  // --- Lógica de Filtro Principal ---
+  const filteredProposals = proposals.filter(proposal => {
+    // 1. Texto
+    const matchesSearch = proposal.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      proposal.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      proposal.project_code?.toLowerCase().includes(searchTerm.toLowerCase());
+
+    if (!matchesSearch) return false;
+
+    // 2. Status
+    if (statusFilter !== 'all' && proposal.status !== statusFilter) {
+      return false;
+    }
+
+    // 3. View Mode (Lead Time)
+    if (viewMode === 'lead_time') {
+      const hasDelivery = ['delivered', 'awaiting_contract', 'operational_start', 'execution_forwarded'].includes(proposal.status);
+      if (!hasDelivery) return false;
+    }
+
+    // 4. Filtros de SLA e Mês (Dependem dos logs de entrega)
+    if (slaParam || monthParam) {
+      const deliveryDateStr = deliveryLogs[proposal.id] || proposal.delivery_date; // fallback se ainda existir na tabela
+
+      // Se não tem data de entrega, não entra nos gráficos de SLA
+      if (!deliveryDateStr) return false;
+
+      const deliveryDate = parseISO(deliveryDateStr);
+
+      // Filtro de Mês
+      if (monthParam) {
+        const targetMonth = parseISO(monthParam + '-01');
+        if (!isSameMonth(deliveryDate, targetMonth)) return false;
+      }
+
+      // Filtro de SLA
+      if (slaParam) {
+        const entryDate = parseISO(proposal.entry_date);
+
+        let isLate = false;
+        if (proposal.deadline && deliveryDate > parseISO(proposal.deadline)) isLate = true;
+
+        const businessDays = differenceInBusinessDays(deliveryDate, entryDate);
+
+        if (slaParam === 'late' && !isLate) return false;
+        if (slaParam === 'one_day' && (isLate || businessDays > 1)) return false;
+        if (slaParam === 'five_days' && (isLate || businessDays <= 1)) return false;
+      }
+    }
+
+    return true;
+  });
 
   const getTimestampFromLogs = (targetStatus: string, logs: AuditLog[], entryDate?: string): string | null => {
     if (targetStatus === 'entry' || targetStatus === 'awaiting_code') {
@@ -193,26 +301,25 @@ export default function Proposals() {
       },
       {
         label: "Envio -> Assinatura",
-        subtitle: "Comercial",
+        subtitle: "HNS -> Comercial",
         ...calculateMetric(dateDelivered, dateContract),
         color: "bg-purple-50 text-purple-700 border-purple-200"
       },
       {
         label: "Assinatura -> Start",
-        subtitle: "Gestão de Contas",
+        subtitle: "Comercial -> Gestão de Contas",
         ...calculateMetric(dateContract, dateStart),
         color: "bg-emerald-50 text-emerald-700 border-emerald-200"
       },
       {
         label: "Start -> Execução",
-        subtitle: "HNS",
+        subtitle: "Gestão de Contas -> HNS",
         ...calculateMetric(dateStart, dateExecution),
         color: "bg-indigo-50 text-indigo-700 border-indigo-200"
       }
     ];
   };
 
-  // ... (Upload handlers, CRUD actions e outros métodos mantidos) ...
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     setIsUploading(true);
@@ -234,6 +341,12 @@ export default function Proposals() {
     }
   };
 
+  const removeAttachment = (index: number) => {
+    const newAtt = [...attachments];
+    newAtt.splice(index, 1);
+    setAttachments(newAtt);
+  };
+
   const addLink = () => {
     if (!newLink.name || !newLink.url) {
       toast.error('Preencha nome e URL do link');
@@ -241,6 +354,12 @@ export default function Proposals() {
     }
     setLinks([...links, newLink]);
     setNewLink({ name: '', url: '' });
+  };
+
+  const removeLink = (index: number) => {
+    const newLnks = [...links];
+    newLnks.splice(index, 1);
+    setLinks(newLnks);
   };
 
   const handleCreate = async () => {
@@ -339,7 +458,6 @@ export default function Proposals() {
   };
 
   const executeStatusChange = async (proposal: Proposal, newStatus: ProposalStatus, justify?: string) => {
-    const previousStatus = proposal.status;
     try {
       const { data, error } = await supabase
         .from('proposals')
@@ -356,7 +474,7 @@ export default function Proposals() {
         entityType: 'proposal',
         entityId: proposal.id,
         entityTitle: proposal.title,
-        previousStatus,
+        previousStatus: proposal.status,
         newStatus,
         metadata: justify ? { justification: justify } : undefined
       });
@@ -409,20 +527,6 @@ export default function Proposals() {
     // @ts-ignore
     setLinks(proposal.links || []);
   };
-
-  const filteredProposals = proposals.filter(proposal => {
-    const matchesSearch = proposal.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      proposal.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      proposal.project_code?.toLowerCase().includes(searchTerm.toLowerCase());
-
-    if (viewMode === 'lead_time') {
-      const hasDelivery = ['delivered', 'awaiting_contract', 'operational_start', 'execution_forwarded'].includes(proposal.status);
-      return matchesSearch && hasDelivery;
-    }
-
-    const matchesStatus = statusFilter === 'all' || proposal.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
 
   const TimelineStep = ({
     date,
@@ -503,14 +607,24 @@ export default function Proposals() {
                       <Button onClick={addLink} size="sm" variant="secondary" className="h-9">Adicionar</Button>
                     </div>
                     {links.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mt-2">{links.map((l, i) => <span key={i} className="text-xs bg-muted px-2 py-1 rounded border">{l.name}</span>)}</div>
+                      <div className="flex flex-wrap gap-2 mt-2">{links.map((l, i) => (
+                        <div key={i} className="flex items-center gap-2 bg-muted px-2 py-1 rounded border">
+                          <span className="text-xs">{l.name}</span>
+                          <button onClick={() => removeLink(i)} className="text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
+                        </div>
+                      ))}</div>
                     )}
                   </div>
                   <div className="space-y-2 bg-secondary/20 p-3 rounded-lg border border-border/50">
                     <Label className="flex items-center gap-2 text-[#612cb5]"><Paperclip className="h-4 w-4" /> Arquivos Anexos</Label>
                     <Input type="file" onChange={handleFileUpload} disabled={isUploading} className="text-sm input-enhanced h-9" />
                     {attachments.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mt-2">{attachments.map((a, i) => <span key={i} className="text-xs bg-muted px-2 py-1 rounded border">{a.name}</span>)}</div>
+                      <div className="flex flex-wrap gap-2 mt-2">{attachments.map((a, i) => (
+                        <div key={i} className="flex items-center gap-2 bg-muted px-2 py-1 rounded border">
+                          <span className="text-xs">{a.name}</span>
+                          <button onClick={() => removeAttachment(i)} className="text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
+                        </div>
+                      ))}</div>
                     )}
                   </div>
 
@@ -523,6 +637,19 @@ export default function Proposals() {
             </Dialog>
           )}
         </div>
+
+        {/* Filter Feedback */}
+        {(statusFilter !== 'all' || slaParam || monthParam) && (
+          <div className="flex items-center gap-2 mb-2 p-2 bg-blue-50 border border-blue-100 rounded text-blue-800 text-sm animate-fade-in">
+            <span className="font-medium">Filtros ativos:</span>
+            {statusFilter !== 'all' && <span className="bg-white px-2 py-0.5 rounded border">Status: {statusFilter}</span>}
+            {slaParam && <span className="bg-white px-2 py-0.5 rounded border">SLA: {slaParam === 'late' ? 'Atrasado' : slaParam === 'one_day' ? '1 dia' : '5 dias'}</span>}
+            {monthParam && <span className="bg-white px-2 py-0.5 rounded border">Mês: {monthParam}</span>}
+            <Button variant="ghost" size="sm" onClick={clearFilters} className="ml-auto h-6 text-blue-800 hover:bg-blue-100">
+              <FilterX className="w-3 h-3 mr-1" /> Limpar
+            </Button>
+          </div>
+        )}
 
         {/* Filters */}
         <Card className="glass-card">
@@ -537,15 +664,18 @@ export default function Proposals() {
                   className="pl-10 input-enhanced"
                 />
               </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <Select value={statusFilter} onValueChange={(val) => { setStatusFilter(val); setSearchParams(prev => { prev.set('status', val); return prev; }) }}>
                 <SelectTrigger className="w-full sm:w-48 input-enhanced">
                   <SelectValue placeholder="Filtrar por status" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos os Status</SelectItem>
-                  {statusOptions.map(option => (
-                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                  ))}
+                  {statusOptions
+                    // REGRA 1: Filtra status de automação
+                    .filter(opt => !automationStatuses.includes(opt.value))
+                    .map(option => (
+                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>
@@ -574,6 +704,7 @@ export default function Proposals() {
               ) : (
                 filteredProposals.map((proposal, index) => {
                   const isAutomationStatus = automationStatuses.includes(proposal.status);
+                  // REGRA 2: Bloqueia se estiver Aguardando Código e não tiver código
                   const isLockedAwaitingCode = proposal.status === 'awaiting_code' && !proposal.project_code;
 
                   return (
@@ -599,7 +730,7 @@ export default function Proposals() {
                         {isAccountManager || isAutomationStatus || isLockedAwaitingCode ? (
                           <div title={
                             isAccountManager ? "Sem permissão" :
-                              isLockedAwaitingCode ? "Aguarde a geração do código" :
+                              isLockedAwaitingCode ? "Aguarde a geração do código para alterar o status" :
                                 "Status controlado via automação"
                           }>
                             {isLockedAwaitingCode ? (
@@ -629,6 +760,7 @@ export default function Proposals() {
                               <StatusBadge status={proposal.status} />
                             </SelectTrigger>
                             <SelectContent>
+                              {/* REGRA 1: Filtra status de automação na mudança manual */}
                               {statusOptions
                                 .filter(opt => !automationStatuses.includes(opt.value))
                                 .map(option => (
@@ -696,7 +828,7 @@ export default function Proposals() {
           <DialogContent className="sm:max-w-5xl bg-card border-border h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
             {viewingProposal && (
               <>
-                {/* Header Reformulado */}
+                {/* Header Reformulado (REGRA 3) */}
                 <div className="px-6 py-5 border-b bg-gray-50/50 shrink-0">
                   <div className="flex justify-between items-start mb-4">
                     <div>
@@ -712,14 +844,14 @@ export default function Proposals() {
                     </div>
                   </div>
 
-                  <div className="flex gap-8 text-sm border-t pt-3 mt-1 border-gray-200">
+                  <div className="flex gap-12 text-sm border-t pt-4 mt-2 border-gray-200">
                     <div className="flex flex-col">
-                      <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Entrada</span>
-                      <span className="font-medium text-gray-700">{format(new Date(viewingProposal.entry_date), "dd/MM/yyyy 'às' HH:mm")}</span>
+                      <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider mb-1">Data de Entrada</span>
+                      <span className="font-semibold text-gray-800 text-base">{format(new Date(viewingProposal.entry_date), "dd/MM/yyyy 'às' HH:mm")}</span>
                     </div>
                     <div className="flex flex-col">
-                      <span className="text-xs text-muted-foreground uppercase font-bold tracking-wider">Prazo</span>
-                      <span className={`font-medium ${viewingProposal.deadline && new Date(viewingProposal.deadline) < new Date() && viewingProposal.status !== 'delivered' ? 'text-red-600' : 'text-gray-700'}`}>
+                      <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider mb-1">Prazo de Entrega</span>
+                      <span className={`font-semibold text-base ${viewingProposal.deadline && new Date(viewingProposal.deadline) < new Date() && viewingProposal.status !== 'delivered' ? 'text-red-600' : 'text-gray-800'}`}>
                         {viewingProposal.deadline ? format(new Date(viewingProposal.deadline), "dd/MM/yyyy") : 'N/A'}
                       </span>
                     </div>
@@ -740,7 +872,7 @@ export default function Proposals() {
                           ) : (
                             <span className="text-lg font-mono text-gray-300">--</span>
                           )}
-                          {/* Adicionado Subtítulo da Métrica no Modal */}
+                          {/* Subtítulo da Métrica no Modal */}
                           <span className="text-[10px] text-gray-500 font-medium mt-1 uppercase tracking-tight">{metric.subtitle}</span>
                         </div>
                       ))
@@ -839,7 +971,7 @@ export default function Proposals() {
                           icon={Binary}
                         />
 
-                        {/* Etapa Construção (Regra 4) */}
+                        {/* REGRA 4: Etapa Construção */}
                         <TimelineStep
                           label="Em Construção"
                           date={getTimestampFromLogs('construction', viewingProposalLogs)}
@@ -942,6 +1074,37 @@ export default function Proposals() {
                   <Label htmlFor="edit-description">Descrição</Label>
                   <Textarea id="edit-description" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} className="input-enhanced min-h-[80px]" />
                 </div>
+
+                {/* BLOCOS DE UI ADICIONADOS PARA EDIÇÃO */}
+                <div className="space-y-2 bg-secondary/20 p-3 rounded-lg border border-border/50">
+                  <Label className="flex items-center gap-2 text-[#612cb5]"><LinkIcon className="h-4 w-4" /> Links Externos</Label>
+                  <div className="flex gap-2">
+                    <Input placeholder="Nome" value={newLink.name} onChange={e => setNewLink({ ...newLink, name: e.target.value })} className="flex-1 input-enhanced h-9 text-sm" />
+                    <Input placeholder="URL" value={newLink.url} onChange={e => setNewLink({ ...newLink, url: e.target.value })} className="flex-[2] input-enhanced h-9 text-sm" />
+                    <Button onClick={addLink} size="sm" variant="secondary" className="h-9">Adicionar</Button>
+                  </div>
+                  {links.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">{links.map((l, i) => (
+                      <div key={i} className="flex items-center gap-2 bg-muted px-2 py-1 rounded border">
+                        <span className="text-xs">{l.name}</span>
+                        <button onClick={() => removeLink(i)} className="text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
+                      </div>
+                    ))}</div>
+                  )}
+                </div>
+                <div className="space-y-2 bg-secondary/20 p-3 rounded-lg border border-border/50">
+                  <Label className="flex items-center gap-2 text-[#612cb5]"><Paperclip className="h-4 w-4" /> Arquivos Anexos</Label>
+                  <Input type="file" onChange={handleFileUpload} disabled={isUploading} className="text-sm input-enhanced h-9" />
+                  {attachments.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">{attachments.map((a, i) => (
+                      <div key={i} className="flex items-center gap-2 bg-muted px-2 py-1 rounded border">
+                        <span className="text-xs">{a.name}</span>
+                        <button onClick={() => removeAttachment(i)} className="text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>
+                      </div>
+                    ))}</div>
+                  )}
+                </div>
+
                 <div className="flex justify-end gap-3 pt-4">
                   <Button variant="outline" onClick={() => setEditingProposal(null)}>Cancelar</Button>
                   <Button onClick={handleUpdate} className="btn-glow bg-[#612cb5] text-white">Salvar Alterações</Button>

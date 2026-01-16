@@ -25,6 +25,12 @@ export interface Profile {
   updated_at: string;
 }
 
+export interface StatusNotification {
+  status: string;
+  emails: string[];
+  updated_at?: string;
+}
+
 export interface UserRole {
   id: string;
   user_id: string;
@@ -43,6 +49,7 @@ export interface Proposal {
   status: ProposalStatus;
   entry_date: string;
   deadline: string | null;
+  idemail: string | null;
 
   // As datas específicas foram removidas.
   // O histórico é derivado de AuditLog.
@@ -112,4 +119,16 @@ export interface AuditLog {
   new_status: string | null;
   metadata: Record<string, any>;
   created_at: string;
+}
+
+export interface Request {
+  id: string;
+  requester_name: string;
+  description: string;
+  assignee_id: string | null;
+  priority: RequestPriority;
+  status: RequestStatus;
+  attachments: any[];
+  created_at: string;
+  updated_at: string;
 }

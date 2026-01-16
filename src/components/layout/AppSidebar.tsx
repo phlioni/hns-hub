@@ -32,19 +32,19 @@ const navItems = [
     allowedRoles: ['admin', 'member', 'account_manager']
   },
   // OKR ITEM REMOVIDO CONFORME SOLICITADO
-  {
-    title: 'Solicitações',
-    url: '/requests',
-    icon: Inbox,
-    allowedRoles: ['admin', 'member']
-  },
-  {
-    title: 'Auditoria',
-    url: '/audit',
-    icon: ShieldCheck,
-    restricted: true,
-    allowedRoles: ['admin']
-  },
+  // {
+  //   title: 'Solicitações',
+  //   url: '/requests',
+  //   icon: Inbox,
+  //   allowedRoles: ['admin', 'member']
+  // },
+  // {
+  //   title: 'Auditoria',
+  //   url: '/audit',
+  //   icon: ShieldCheck,
+  //   restricted: true,
+  //   allowedRoles: ['admin']
+  // },
   {
     title: 'Gestão de Acesso',
     url: '/access',
@@ -56,7 +56,7 @@ const navItems = [
     title: 'Configurações',
     url: '/settings',
     icon: Settings,
-    allowedRoles: ['admin', 'member', 'account_manager']
+    allowedRoles: ['admin']
   },
 ];
 

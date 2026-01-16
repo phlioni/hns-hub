@@ -36,7 +36,7 @@ const chartConfig = {
   in_review: { label: "Em Revisão", color: "#8b5cf6" },
   awaiting_contract: { label: "Aguardando Assinatura de Contrato", color: "#f59e0b" },
   operational_start: { label: "Start Operacional", color: "#10b981" },
-  execution_forwarded: { label: "Encaminhado para Execução", color: "#6366f1" },
+  execution_forwarded: { label: "Execução", color: "#6366f1" },
 
   // Cores SLA
   one_day: { label: "Até 1 dia útil", color: "#22c55e" },
@@ -47,7 +47,7 @@ const chartConfig = {
   time_code: { label: "Até Aguardando Código", color: "#ec4899" },
   time_sign: { label: "Envio -> Aguardando Assinatura", color: "#8b5cf6" },
   time_start: { label: "Aguardando Assinatura -> Start Operacional", color: "#10b981" },
-  time_execution: { label: "Start Operacional -> Encaminhado Execução", color: "#6366f1" }
+  time_execution: { label: "Start Operacional -> Execução", color: "#6366f1" }
 } satisfies ChartConfig;
 
 type FilterType = 'preset' | 'month' | 'range';
@@ -56,15 +56,14 @@ type PresetPeriod = '30d' | '90d' | '6m' | '1y' | 'all';
 // Mapeamento de Subtítulos para o Gráfico
 const leadTimeSubtitles: Record<string, string> = {
   "Aguardando Código": "Controladoria",
-  "Envio -> Aguardando Assinatura": "Comercial",
-  "Assinatura -> Start Operacional": "Gestão de Contas",
-  "Start Operacional -> Execução": "HNS"
+  "Envio -> Aguardando Assinatura": "HNS -> Comercial",
+  "Assinatura -> Start Operacional": "Comercial -> Gestão de Contas",
+  "Start Operacional -> Execução": "Gestão de Contas -> HNS"
 };
 
-// Componente Customizado para o Eixo Y do Gráfico
 const CustomYAxisTick = ({ x, y, payload }: any) => {
   const subtitle = leadTimeSubtitles[payload.value] || "";
-  
+
   return (
     <g transform={`translate(${x},${y})`}>
       <text x={-10} y={-5} textAnchor="end" fill="#4b5563" fontSize={11} fontWeight={500}>
@@ -97,7 +96,6 @@ export default function Dashboard() {
 
   const fetchDashboardData = async () => {
     try {
-      // Buscar Propostas
       const { data: proposalsData, error: proposalsError } = await supabase
         .from('proposals')
         .select('*')
@@ -106,7 +104,6 @@ export default function Dashboard() {
       if (proposalsError) throw proposalsError;
       setProposals(proposalsData as Proposal[]);
 
-      // Buscar Logs
       const { data: logsData, error: logsError } = await supabase
         .from('audit_logs')
         .select('*')
@@ -164,17 +161,14 @@ export default function Dashboard() {
     return Math.round((count / totalFiltered) * 100);
   };
 
-  // --- CARDS COUNTS ---
   const awaitingCodeCount = filteredProposals.filter(p => p.status === 'awaiting_code').length;
   const awaitingContractCount = filteredProposals.filter(p => p.status === 'awaiting_contract').length;
   const executionForwardedCount = filteredProposals.filter(p => p.status === 'execution_forwarded').length;
 
-  // --- LEAD TIME HELPERS ---
   const getLogDate = (proposalId: string, status: string, logs: AuditLog[]) => {
     const log = logs
       .filter(l => l.entity_id === proposalId && l.new_status === status)
       .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0];
-    
     return log ? log.created_at : null;
   };
 
@@ -239,51 +233,41 @@ export default function Dashboard() {
 
   const leadTimeData = processLeadTimeData();
 
-  // --- PIPELINE PIE CHART DATA ---
   const processPipelineData = () => {
     const sequence = ['awaiting_code', 'new', 'understanding', 'construction', 'in_review'];
     return sequence.map(key => ({
       name: chartConfig[key as keyof typeof chartConfig]?.label || key,
       value: filteredProposals.filter(p => p.status === key).length,
-      fill: chartConfig[key as keyof typeof chartConfig]?.color
-    })).filter(item => item.value >= 0); 
+      fill: chartConfig[key as keyof typeof chartConfig]?.color,
+      statusKey: key // Adicionado para facilitar o onClick
+    })).filter(item => item.value >= 0);
   };
   const pipelineData = processPipelineData();
   const totalPipelineVolume = pipelineData.reduce((acc, curr) => acc + curr.value, 0);
 
-  // --- SLA BAR CHART (CORRIGIDO) ---
   const processDeliveryMetrics = () => {
-    // CORREÇÃO: Não filtramos mais por status === 'delivered'.
-    // Iteramos sobre TODAS as propostas filtradas pelo período de criação.
-    // Verificamos se ela tem data de entrega ou log de entrega.
-    
-    const grouped: Record<string, { name: string, one_day: number, five_days: number, late: number, total: number }> = {};
+    const grouped: Record<string, { name: string, one_day: number, five_days: number, late: number, total: number, rawDate: string }> = {};
 
     filteredProposals.forEach(p => {
-      // 1. Tenta achar o log de quando virou 'delivered'
-      // Pegamos o mais recente caso haja múltiplos (re-entregas), ou o primeiro. Geralmente o primeiro 'delivered' conta para o SLA.
-      // Vamos pegar o primeiro para ser justo com o tempo de desenvolvimento original.
       const deliveryLog = auditLogs
         .filter(l => l.entity_id === p.id && l.new_status === 'delivered')
         .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0];
 
-      // 2. Fallback: Se não tem log, vê se tem data na tabela (legado)
       const deliveryDateStr = deliveryLog ? deliveryLog.created_at : p.delivery_date;
 
-      // Se não tem data de entrega de jeito nenhum, pula (ainda não foi entregue)
       if (!deliveryDateStr) return;
-      
+
       const deliveryDate = parseISO(deliveryDateStr);
       const entryDate = parseISO(p.entry_date);
       const key = format(deliveryDate, 'MMM/yy', { locale: ptBR });
 
       if (!grouped[key]) {
-        grouped[key] = { name: key, one_day: 0, five_days: 0, late: 0, total: 0 };
+        grouped[key] = { name: key, one_day: 0, five_days: 0, late: 0, total: 0, rawDate: format(deliveryDate, 'yyyy-MM') };
       }
 
       let isLate = false;
       if (p.deadline && deliveryDate > parseISO(p.deadline)) isLate = true;
-      
+
       const diffDays = Math.floor(differenceInHours(deliveryDate, entryDate) / 24);
 
       if (isLate) grouped[key].late += 1;
@@ -297,13 +281,12 @@ export default function Dashboard() {
   };
   const deliveryChartData = processDeliveryMetrics();
 
-  // --- OPERATIONAL START TABLE LIST ---
   const operationalStartList = filteredProposals
     .filter(p => p.status === 'operational_start')
     .map(p => {
       const startLog = auditLogs.find(l => l.entity_id === p.id && l.new_status === 'operational_start');
       const dateStr = startLog ? startLog.created_at : p.updated_at;
-      
+
       return {
         id: p.id,
         title: p.title,
@@ -311,7 +294,7 @@ export default function Dashboard() {
         leadTime: formatDuration(differenceInMinutes(new Date(), parseISO(dateStr)))
       };
     })
-    .slice(0, 5); 
+    .slice(0, 5);
 
   if (loading) {
     return (
@@ -379,12 +362,9 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* =====================================================================================
-            SEÇÃO SUPERIOR: PIPELINE (PIE/DONUT) + CARDS/TABELA DE STATUS
-        ===================================================================================== */}
+        {/* SUPERIOR */}
         <section className="grid grid-cols-1 lg:grid-cols-7 gap-6 animate-slide-up" style={{ animationDelay: '100ms' }}>
-
-          {/* GRÁFICO 1: PIPELINE ATIVO (PIE CHART) */}
+          {/* GRÁFICO 1 */}
           <Card className="lg:col-span-4 bg-white border-none shadow-sm rounded-xl h-full flex flex-col">
             <CardHeader>
               <CardTitle className="text-base text-gray-700 flex items-center gap-2">
@@ -406,67 +386,50 @@ export default function Dashboard() {
                     startAngle={90}
                     endAngle={-270}
                     strokeWidth={5}
+                    onClick={(data) => {
+                      if (data && data.payload && data.payload.statusKey) {
+                        navigate(`/proposals?status=${data.payload.statusKey}`);
+                      }
+                    }}
+                    style={{ cursor: 'pointer' }}
                   >
                     {pipelineData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.fill} stroke="white" strokeWidth={2} />
                     ))}
-                    
-                    <LabelList 
-                      dataKey="value" 
-                      position="inside" 
-                      className="fill-white font-bold drop-shadow-md" 
-                      stroke="none" 
-                      fontSize={14} 
+                    <LabelList
+                      dataKey="value"
+                      position="inside"
+                      className="fill-white font-bold drop-shadow-md"
+                      stroke="none"
+                      fontSize={14}
                       formatter={(value: number) => value > 0 ? value : ''}
                     />
-
                     <Label
                       content={({ viewBox }) => {
                         if (viewBox && "cx" in viewBox && "cy" in viewBox) {
                           return (
-                            <text
-                              x={viewBox.cx}
-                              y={viewBox.cy}
-                              textAnchor="middle"
-                              dominantBaseline="middle"
-                            >
-                              <tspan
-                                x={viewBox.cx}
-                                y={viewBox.cy}
-                                className="fill-foreground text-4xl font-bold"
-                              >
-                                {totalPipelineVolume.toLocaleString()}
-                              </tspan>
-                              <tspan
-                                x={viewBox.cx}
-                                y={(viewBox.cy || 0) + 28}
-                                className="fill-muted-foreground text-sm"
-                              >
-                                Total
-                              </tspan>
+                            <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
+                              <tspan x={viewBox.cx} y={viewBox.cy} className="fill-foreground text-4xl font-bold">{totalPipelineVolume.toLocaleString()}</tspan>
+                              <tspan x={viewBox.cx} y={(viewBox.cy || 0) + 28} className="fill-muted-foreground text-sm">Total</tspan>
                             </text>
                           )
                         }
                       }}
                     />
                   </Pie>
-                  <Legend 
-                    layout="horizontal" 
-                    verticalAlign="bottom" 
-                    align="center"
-                    iconType="circle"
-                    wrapperStyle={{ paddingTop: '20px' }}
-                  />
+                  <Legend layout="horizontal" verticalAlign="bottom" align="center" iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
                 </PieChart>
               </ChartContainer>
             </CardContent>
           </Card>
 
-          {/* COLUNA LATERAL: CARDS E TABELA */}
+          {/* COLUNA LATERAL */}
           <div className="lg:col-span-3 flex flex-col gap-4 h-full">
-
-            {/* CARD: AGUARDANDO CÓDIGO (NOVO) */}
-            <Card className="bg-white border-none shadow-sm rounded-xl">
+            {/* CARD AGUARDANDO CÓDIGO */}
+            <Card
+              className="bg-white border-none shadow-sm rounded-xl flex-shrink-0 cursor-pointer hover:shadow-md transition-shadow"
+              onClick={() => navigate('/proposals?status=awaiting_code')}
+            >
               <CardContent className="p-4 flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Aguardando Código</p>
@@ -484,8 +447,11 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
-            {/* CARD: AGUARDANDO ASSINATURA */}
-            <Card className="bg-white border-none shadow-sm rounded-xl">
+            {/* CARD AGUARDANDO ASSINATURA */}
+            <Card
+              className="bg-white border-none shadow-sm rounded-xl flex-shrink-0 cursor-pointer hover:shadow-md transition-shadow"
+              onClick={() => navigate('/proposals?status=awaiting_contract')}
+            >
               <CardContent className="p-4 flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Aguardando Assinatura</p>
@@ -503,8 +469,11 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
-            {/* NOVO CARD: ENCAMINHADO PARA EXECUÇÃO */}
-            <Card className="bg-white border-none shadow-sm rounded-xl">
+            {/* CARD EXECUÇÃO */}
+            <Card
+              className="bg-white border-none shadow-sm rounded-xl flex-shrink-0 cursor-pointer hover:shadow-md transition-shadow"
+              onClick={() => navigate('/proposals?status=execution_forwarded')}
+            >
               <CardContent className="p-4 flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Encaminhado p/ Execução</p>
@@ -522,9 +491,9 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
-            {/* TABELA: START OPERACIONAL */}
-            <Card className="bg-white border-none shadow-sm rounded-xl flex-1 flex flex-col">
-              <CardHeader className="py-3 px-4 pb-2 border-b border-gray-100">
+            {/* TABELA START OPERACIONAL */}
+            <Card className="bg-white border-none shadow-sm rounded-xl flex flex-col flex-1 min-h-[250px]">
+              <CardHeader className="py-3 px-4 pb-2 border-b border-gray-100 flex-shrink-0">
                 <CardTitle className="text-sm flex flex-col gap-1">
                   <div className="flex items-center gap-2">
                     <List className="h-4 w-4 text-[#10b981]" /> Start Operacional (Lista)
@@ -532,7 +501,7 @@ export default function Dashboard() {
                   <span className="text-xs text-gray-500 font-medium pl-6">Gestão de Contas</span>
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-0 overflow-auto flex-1 max-h-[200px]">
+              <CardContent className="p-0 overflow-auto flex-1">
                 <Table>
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
@@ -543,7 +512,11 @@ export default function Dashboard() {
                   <TableBody>
                     {operationalStartList.length > 0 ? (
                       operationalStartList.map(op => (
-                        <TableRow key={op.id} className="hover:bg-muted/30">
+                        <TableRow
+                          key={op.id}
+                          className="hover:bg-muted/30 cursor-pointer"
+                          onClick={() => navigate('/proposals?status=operational_start')}
+                        >
                           <TableCell className="py-2 text-xs font-medium">{op.title}</TableCell>
                           <TableCell className="py-2 text-xs text-right text-gray-500">{op.leadTime}</TableCell>
                         </TableRow>
@@ -557,13 +530,10 @@ export default function Dashboard() {
                 </Table>
               </CardContent>
             </Card>
-
           </div>
         </section>
 
-        {/* =====================================================================================
-            SEÇÃO MEIO: TEMPOS DE RESPOSTA (LEAD TIME)
-        ===================================================================================== */}
+        {/* MEIO: LEAD TIME */}
         <section className="animate-slide-up" style={{ animationDelay: '200ms' }}>
           <Card className="bg-white border-none shadow-sm rounded-xl">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -574,12 +544,7 @@ export default function Dashboard() {
                   <CardDescription>Média entre as etapas do processo</CardDescription>
                 </div>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-xs gap-1 hover:bg-[#612cb5] hover:text-white transition-colors"
-                onClick={() => navigate('/proposals?view=lead_time')}
-              >
+              <Button variant="outline" size="sm" className="text-xs gap-1 hover:bg-[#612cb5] hover:text-white transition-colors" onClick={() => navigate('/proposals?view=lead_time')}>
                 Ver Detalhes <ArrowRight className="h-3 w-3" />
               </Button>
             </CardHeader>
@@ -596,16 +561,14 @@ export default function Dashboard() {
                       tickMargin={10}
                       axisLine={false}
                       width={180}
-                      tick={<CustomYAxisTick />} // Uso do Tick Customizado com Subtítulo
+                      tick={<CustomYAxisTick />}
                     />
                     <ChartTooltip cursor={{ fill: 'transparent' }} content={<ChartTooltipContent />} />
                     <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={32} animationDuration={1000}>
                       <LabelList dataKey="formatted" position="right" fill="#6b7280" fontSize={12} />
-                      {
-                        leadTimeData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.fill} />
-                        ))
-                      }
+                      {leadTimeData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                      ))}
                     </Bar>
                   </BarChart>
                 </ChartContainer>
@@ -614,9 +577,7 @@ export default function Dashboard() {
           </Card>
         </section>
 
-        {/* =====================================================================================
-            SEÇÃO INFERIOR: SLA DE ENTREGAS (FULL WIDTH)
-        ===================================================================================== */}
+        {/* INFERIOR: SLA */}
         <section className="animate-slide-up" style={{ animationDelay: '300ms' }}>
           <Card className="bg-white border-none shadow-sm w-full rounded-xl">
             <CardHeader className="py-6 border-b border-gray-100">
@@ -636,16 +597,36 @@ export default function Dashboard() {
                     <ChartTooltip content={<ChartTooltipContent indicator="dashed" />} />
                     <ChartLegend content={<ChartLegendContent />} />
 
-                    {/* Barras Empilhadas com Labels de Valor */}
-                    <Bar dataKey="one_day" stackId="a" fill="var(--color-one_day)" radius={[0, 0, 0, 0]}>
+                    {/* Barras Clicáveis - Navegam com SLA + Mês */}
+                    <Bar
+                      dataKey="one_day"
+                      stackId="a"
+                      fill="var(--color-one_day)"
+                      radius={[0, 0, 0, 0]}
+                      style={{ cursor: 'pointer' }}
+                      onClick={(data: any) => { if (data?.payload?.rawDate) navigate(`/proposals?sla=one_day&month=${data.payload.rawDate}`) }}
+                    >
                       <LabelList dataKey="one_day" position="center" fill="white" fontSize={14} formatter={(v: number) => v > 0 ? v : ''} />
                     </Bar>
-                    <Bar dataKey="five_days" stackId="a" fill="var(--color-five_days)" radius={[0, 0, 0, 0]}>
+                    <Bar
+                      dataKey="five_days"
+                      stackId="a"
+                      fill="var(--color-five_days)"
+                      radius={[0, 0, 0, 0]}
+                      style={{ cursor: 'pointer' }}
+                      onClick={(data: any) => { if (data?.payload?.rawDate) navigate(`/proposals?sla=five_days&month=${data.payload.rawDate}`) }}
+                    >
                       <LabelList dataKey="five_days" position="center" fill="white" fontSize={14} formatter={(v: number) => v > 0 ? v : ''} />
                     </Bar>
-                    <Bar dataKey="late" stackId="a" fill="var(--color-late)" radius={[4, 4, 0, 0]}>
+                    <Bar
+                      dataKey="late"
+                      stackId="a"
+                      fill="var(--color-late)"
+                      radius={[4, 4, 0, 0]}
+                      style={{ cursor: 'pointer' }}
+                      onClick={(data: any) => { if (data?.payload?.rawDate) navigate(`/proposals?sla=late&month=${data.payload.rawDate}`) }}
+                    >
                       <LabelList dataKey="late" position="center" fill="white" fontSize={14} formatter={(v: number) => v > 0 ? v : ''} />
-                      {/* Total no Topo */}
                       <LabelList dataKey="total" position="top" fill="#6b7280" fontSize={16} formatter={(v: number) => `Total: ${v}`} />
                     </Bar>
                   </BarChart>
