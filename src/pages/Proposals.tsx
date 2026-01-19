@@ -5,7 +5,8 @@ import { ptBR } from 'date-fns/locale';
 import {
   Plus, Search, History, MoreHorizontal, FileText, Trash2, Edit,
   Paperclip, X, Link as LinkIcon, ExternalLink, Eye, MessageSquare, Clock,
-  CheckCircle2, Circle, CalendarClock, ArrowRight, Binary, PenTool, Hammer, Lock, FilterX
+  CheckCircle2, Circle, CalendarClock, ArrowRight, Binary, PenTool, Hammer, Lock, FilterX,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -66,6 +67,10 @@ export default function Proposals() {
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Estados de Paginação
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(20);
 
   // Filtros da URL
   const statusParam = searchParams.get('status');
@@ -129,6 +134,11 @@ export default function Proposals() {
       setViewingProposalLogs([]);
     }
   }, [viewingProposal]);
+
+  // Resetar a página para 1 quando qualquer filtro mudar
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, slaParam, monthParam, viewMode]);
 
   const fetchProposals = async () => {
     try {
@@ -250,6 +260,24 @@ export default function Proposals() {
 
     return true;
   });
+
+  // --- Lógica de Paginação ---
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentProposals = filteredProposals.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredProposals.length / itemsPerPage);
+
+  const handleNextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+
+  const handlePrevPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
 
   const getTimestampFromLogs = (targetStatus: string, logs: AuditLog[], entryDate?: string): string | null => {
     if (targetStatus === 'entry' || targetStatus === 'awaiting_code') {
@@ -694,7 +722,7 @@ export default function Proposals() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredProposals.length === 0 ? (
+              {currentProposals.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={4} className="h-32 text-center text-muted-foreground">
                     <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
@@ -702,7 +730,7 @@ export default function Proposals() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredProposals.map((proposal, index) => {
+                currentProposals.map((proposal, index) => {
                   const isAutomationStatus = automationStatuses.includes(proposal.status);
                   // REGRA 2: Bloqueia se estiver Aguardando Código e não tiver código
                   const isLockedAwaitingCode = proposal.status === 'awaiting_code' && !proposal.project_code;
@@ -821,6 +849,55 @@ export default function Proposals() {
               )}
             </TableBody>
           </Table>
+
+          {/* Pagination Controls */}
+          <div className="flex items-center justify-between p-4 border-t">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Itens por página:</span>
+              <Select
+                value={itemsPerPage.toString()}
+                onValueChange={(value) => {
+                  setItemsPerPage(Number(value));
+                  setCurrentPage(1);
+                }}
+              >
+                <SelectTrigger className="h-8 w-[70px]">
+                  <SelectValue placeholder={itemsPerPage.toString()} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="20">20</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                  <SelectItem value="100">100</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-muted-foreground">
+                Mostrando {currentProposals.length > 0 ? indexOfFirstItem + 1 : 0}-{Math.min(indexOfLastItem, filteredProposals.length)} de {filteredProposals.length}
+              </span>
+              <div className="flex gap-1">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={handlePrevPage}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={handleNextPage}
+                  disabled={currentPage >= totalPages}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
         </Card>
 
         {/* --- DETAILED VIEW MODAL --- */}
