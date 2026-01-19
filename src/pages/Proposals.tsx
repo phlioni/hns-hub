@@ -586,6 +586,12 @@ export default function Proposals() {
     );
   };
 
+  // Funcao auxiliar para identificar o fluxo direto (sem codigo, ja em contrato)
+  const isDirectContractFlow = (p: Proposal) => {
+    // Se nao tem codigo E esta em um status avaçado (contrato pra frente)
+    return !p.project_code && ['awaiting_contract', 'operational_start', 'execution_forwarded'].includes(p.status);
+  }
+
   return (
     <MainLayout>
       <div className="space-y-6">
@@ -964,7 +970,8 @@ export default function Proposals() {
                           <h4 className="flex items-center gap-2 font-semibold text-gray-900 mb-2">
                             <FileText className="w-4 h-4 text-[#612cb5]" /> Descrição
                           </h4>
-                          <div className="bg-gray-50 p-4 rounded-lg border text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                          {/* CORREÇÃO: Adicionado break-words para evitar overflow de texto */}
+                          <div className="bg-gray-50 p-4 rounded-lg border text-sm text-gray-700 whitespace-pre-wrap break-words leading-relaxed">
                             {viewingProposal.description || "Sem descrição."}
                           </div>
                         </div>
@@ -1036,30 +1043,39 @@ export default function Proposals() {
                         <History className="w-4 h-4 text-[#612cb5]" /> Linha do Tempo
                       </h4>
                       <div className="space-y-0">
-                        <TimelineStep
-                          label="Solicitação Recebida"
-                          date={viewingProposal.entry_date}
-                          icon={Clock}
-                        />
+                        {(() => {
+                          // CORREÇÃO: Lógica para ocultar etapas anteriores se for fluxo direto de contrato
+                          const isDirect = isDirectContractFlow(viewingProposal);
 
-                        <TimelineStep
-                          label="Código Gerado (Novo)"
-                          date={getTimestampFromLogs('new', viewingProposalLogs)}
-                          icon={Binary}
-                        />
+                          return (
+                            <>
+                              <TimelineStep
+                                label="Solicitação Recebida"
+                                date={isDirect ? null : viewingProposal.entry_date}
+                                icon={Clock}
+                              />
 
-                        {/* REGRA 4: Etapa Construção */}
-                        <TimelineStep
-                          label="Em Construção"
-                          date={getTimestampFromLogs('construction', viewingProposalLogs)}
-                          icon={Hammer}
-                        />
+                              <TimelineStep
+                                label="Código Gerado (Novo)"
+                                date={isDirect ? null : getTimestampFromLogs('new', viewingProposalLogs)}
+                                icon={Binary}
+                              />
 
-                        <TimelineStep
-                          label="Proposta Enviada"
-                          date={getTimestampFromLogs('delivered', viewingProposalLogs)}
-                          icon={ArrowRight}
-                        />
+                              {/* REGRA 4: Etapa Construção */}
+                              <TimelineStep
+                                label="Em Construção"
+                                date={isDirect ? null : getTimestampFromLogs('construction', viewingProposalLogs)}
+                                icon={Hammer}
+                              />
+
+                              <TimelineStep
+                                label="Proposta Enviada"
+                                date={isDirect ? null : getTimestampFromLogs('delivered', viewingProposalLogs)}
+                                icon={ArrowRight}
+                              />
+                            </>
+                          )
+                        })()}
 
                         <TimelineStep
                           label="Aguard. Assinatura"
