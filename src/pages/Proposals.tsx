@@ -49,6 +49,14 @@ const automationStatuses = [
   'execution_forwarded'
 ];
 
+// REGRA 5: Status que BLOQUEIAM Edição e Exclusão
+const LOCKED_STATUSES = [
+  'awaiting_contract',
+  'operational_start',
+  'execution_forwarded',
+  'delivered'
+];
+
 interface Attachment {
   name: string;
   url: string;
@@ -98,6 +106,10 @@ export default function Proposals() {
 
   const [pendingStatusChange, setPendingStatusChange] = useState<{ proposal: Proposal, newStatus: ProposalStatus } | null>(null);
   const [justification, setJustification] = useState('');
+
+  // --- NOVOS ESTADOS PARA CONTROLE DE ALTERAÇÃO DE PRAZO ---
+  const [pendingDeadlineChange, setPendingDeadlineChange] = useState(false);
+  const [editJustification, setEditJustification] = useState('');
 
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [links, setLinks] = useState<ExternalLinkItem[]>([]);
@@ -433,34 +445,66 @@ export default function Proposals() {
     }
   };
 
-  const handleUpdate = async () => {
+  // --- Função HandleUpdate Modificada ---
+  // Agora verifica mudança de data e impede salvamento sem justificativa
+  const handleUpdate = () => {
     if (isAccountManager) return;
     if (!editingProposal || !formData.title.trim()) return;
+
+    const originalDeadline = editingProposal.deadline ? format(parseISO(editingProposal.deadline), 'yyyy-MM-dd') : '';
+    const newDeadline = formData.deadline;
+
+    if (originalDeadline !== newDeadline) {
+      setEditJustification('');
+      setPendingDeadlineChange(true);
+      return; // Interrompe o fluxo para abrir o modal
+    }
+
+    // Se a data não mudou, executa update normal sem justificativa extra
+    executeProposalUpdate();
+  };
+
+  // --- Função centralizada para executar o Update ---
+  const executeProposalUpdate = async (justificationForDeadline?: string) => {
+    if (!editingProposal) return;
+
     try {
+      const updatePayload: any = {
+        title: formData.title,
+        description: formData.description,
+        project_code: formData.project_code || null,
+        pre_analysis: formData.pre_analysis,
+        pre_proposal: formData.pre_proposal,
+        deadline: formData.deadline || null,
+        attachments: attachments,
+        links: links,
+      };
+
+      // Se houver justificativa de prazo, atualizamos o campo last_justification
+      if (justificationForDeadline) {
+        updatePayload.last_justification = `Alteração de Prazo: ${justificationForDeadline}`;
+      }
+
       const { data, error } = await supabase
         .from('proposals')
-        .update({
-          title: formData.title,
-          description: formData.description,
-          project_code: formData.project_code || null,
-          pre_analysis: formData.pre_analysis,
-          pre_proposal: formData.pre_proposal,
-          deadline: formData.deadline || null,
-          attachments: attachments,
-          links: links,
-        })
+        .update(updatePayload)
         .eq('id', editingProposal.id)
         .select()
         .single();
+
       if (error) throw error;
+
       await logAudit({
         action: 'edited',
         entityType: 'proposal',
         entityId: data.id,
         entityTitle: data.title,
+        metadata: justificationForDeadline ? { justification: justificationForDeadline, change: 'deadline_update' } : undefined
       });
+
       setProposals(proposals.map(p => p.id === data.id ? data as Proposal : p));
       setEditingProposal(null);
+      setPendingDeadlineChange(false); // Fecha modal se estiver aberto
       resetForm();
       toast.success('Proposta atualizada com sucesso');
     } catch (error) {
@@ -741,6 +785,9 @@ export default function Proposals() {
                   // REGRA 2: Bloqueia se estiver Aguardando Código e não tiver código
                   const isLockedAwaitingCode = proposal.status === 'awaiting_code' && !proposal.project_code;
 
+                  // REGRA 5: Verifica se está bloqueado para edição
+                  const isLocked = LOCKED_STATUSES.includes(proposal.status);
+
                   return (
                     <TableRow
                       key={proposal.id}
@@ -827,7 +874,7 @@ export default function Proposals() {
                               </Button>
                             }
                           />
-                          {!isAccountManager && (
+                          {!isAccountManager && !isLocked && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -1102,7 +1149,7 @@ export default function Proposals() {
 
                 <div className="p-4 border-t bg-gray-50 flex justify-end gap-3 shrink-0">
                   <Button variant="outline" onClick={() => setViewingProposal(null)}>Fechar</Button>
-                  {!isAccountManager && (
+                  {!isAccountManager && !LOCKED_STATUSES.includes(viewingProposal.status) && (
                     <Button onClick={() => { setViewingProposal(null); if (viewingProposal) openEdit(viewingProposal); }} className="bg-[#612cb5] text-white">
                       Editar Proposta
                     </Button>
@@ -1138,6 +1185,41 @@ export default function Proposals() {
                 disabled={!justification.trim()}
               >
                 Confirmar Alteração
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* --- NOVO DIALOG: Justificativa de Alteração de Prazo --- */}
+        <Dialog open={pendingDeadlineChange} onOpenChange={setPendingDeadlineChange}>
+          <DialogContent className="bg-card">
+            <DialogHeader>
+              <DialogTitle className="text-[#612cb5] flex items-center gap-2">
+                <CalendarClock className="w-5 h-5" />
+                Alteração de Prazo Detectada
+              </DialogTitle>
+              <DialogDescription>
+                Você alterou a data de entrega. Para prosseguir, é <strong>obrigatório</strong> fornecer uma justificativa para o registro de auditoria.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <Label htmlFor="deadline-justification" className="mb-2 block">Motivo da alteração:</Label>
+              <Textarea
+                id="deadline-justification"
+                placeholder="Ex: Cliente solicitou adiamento, Atraso no fornecedor, etc..."
+                value={editJustification}
+                onChange={e => setEditJustification(e.target.value)}
+                className="input-enhanced min-h-[100px]"
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPendingDeadlineChange(false)}>Cancelar</Button>
+              <Button
+                className="bg-[#612cb5] text-white hover:bg-[#502495]"
+                onClick={() => executeProposalUpdate(editJustification)}
+                disabled={!editJustification.trim()}
+              >
+                Confirmar e Salvar
               </Button>
             </DialogFooter>
           </DialogContent>
