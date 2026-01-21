@@ -45,9 +45,9 @@ const chartConfig = {
 
   // Lead Time Colors
   time_code: { label: "Até Aguardando Código", color: "#ec4899" },
-  time_sign: { label: "Envio -> Aguardando Assinatura", color: "#8b5cf6" },
-  time_start: { label: "Aguardando Assinatura -> Start Operacional", color: "#10b981" },
-  time_execution: { label: "Start Operacional -> Execução", color: "#6366f1" }
+  time_sign: { label: "Envio da proposta até Aguardando Assinatura de Contrato", color: "#8b5cf6" },
+  time_start: { label: "Aguardando Assinatura de Contrato até Start Operacional", color: "#10b981" },
+  time_execution: { label: "Start Operacional até Envio para Execução", color: "#6366f1" }
 } satisfies ChartConfig;
 
 type FilterType = 'preset' | 'month' | 'range';
@@ -56,9 +56,9 @@ type PresetPeriod = '30d' | '90d' | '6m' | '1y' | 'all';
 // Mapeamento de Subtítulos para o Gráfico
 const leadTimeSubtitles: Record<string, string> = {
   "Aguardando Código": "Controladoria",
-  "Envio -> Aguardando Assinatura": "HNS -> Comercial",
-  "Assinatura -> Start Operacional": "Comercial -> Gestão de Contas",
-  "Start Operacional -> Execução": "Gestão de Contas -> HNS"
+  "Envio da Proposta até Aguardando Assinatura de Contrato": "HNS -> Comercial",
+  "Aguardando Assinatura de Contrato até Start Operacional": "Comercial -> Gestão de Contas",
+  "Start Operacional até Envio para Execução": "Gestão de Contas -> HNS"
 };
 
 const CustomYAxisTick = ({ x, y, payload }: any) => {
@@ -225,9 +225,9 @@ export default function Dashboard() {
 
     return [
       { name: "Aguardando Código", value: avgCode, formatted: formatDuration(avgCode), fill: "#ec4899" },
-      { name: "Envio -> Aguardando Assinatura", value: avgSign, formatted: formatDuration(avgSign), fill: "#8b5cf6" },
-      { name: "Assinatura -> Start Operacional", value: avgStart, formatted: formatDuration(avgStart), fill: "#10b981" },
-      { name: "Start Operacional -> Execução", value: avgExec, formatted: formatDuration(avgExec), fill: "#6366f1" }
+      { name: "Envio da Proposta até Aguardando Assinatura de Contrato", value: avgSign, formatted: formatDuration(avgSign), fill: "#8b5cf6" },
+      { name: "Aguardando Assinatura de Contrato até Start Operacional", value: avgStart, formatted: formatDuration(avgStart), fill: "#10b981" },
+      { name: "Start Operacional até Envio para Execução", value: avgExec, formatted: formatDuration(avgExec), fill: "#6366f1" }
     ];
   };
 
@@ -454,7 +454,7 @@ export default function Dashboard() {
             >
               <CardContent className="p-4 flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Aguardando Assinatura</p>
+                  <p className="text-sm font-medium text-muted-foreground">Aguardando Assinatura de Contrato</p>
                   <p className="text-xs text-gray-500 font-medium mb-1">Comercial</p>
                   <div className="flex items-baseline gap-2 mt-1">
                     <h4 className="text-2xl font-bold text-gray-900">{awaitingContractCount}</h4>
@@ -476,7 +476,7 @@ export default function Dashboard() {
             >
               <CardContent className="p-4 flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Encaminhado p/ Execução</p>
+                  <p className="text-sm font-medium text-muted-foreground">Encaminhado para Execução</p>
                   <p className="text-xs text-gray-500 font-medium mb-1">HNS</p>
                   <div className="flex items-baseline gap-2 mt-1">
                     <h4 className="text-2xl font-bold text-gray-900">{executionForwardedCount}</h4>
@@ -560,7 +560,7 @@ export default function Dashboard() {
                       tickLine={false}
                       tickMargin={10}
                       axisLine={false}
-                      width={180}
+                      width={300}
                       tick={<CustomYAxisTick />}
                     />
                     <ChartTooltip cursor={{ fill: 'transparent' }} content={<ChartTooltipContent />} />

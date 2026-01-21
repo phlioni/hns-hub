@@ -334,25 +334,25 @@ export default function Proposals() {
 
     return [
       {
-        label: "Solicitação -> Código",
+        label: "Aguardando Código",
         subtitle: "Controladoria",
         ...calculateMetric(dateEntry, dateCode),
         color: "bg-pink-50 text-pink-700 border-pink-200"
       },
       {
-        label: "Envio -> Assinatura",
+        label: "Envio até Assinatura",
         subtitle: "HNS -> Comercial",
         ...calculateMetric(dateDelivered, dateContract),
         color: "bg-purple-50 text-purple-700 border-purple-200"
       },
       {
-        label: "Assinatura -> Start",
+        label: "Assinatura até Start",
         subtitle: "Comercial -> Gestão de Contas",
         ...calculateMetric(dateContract, dateStart),
         color: "bg-emerald-50 text-emerald-700 border-emerald-200"
       },
       {
-        label: "Start -> Execução",
+        label: "Start até Execução",
         subtitle: "Gestão de Contas -> HNS",
         ...calculateMetric(dateStart, dateExecution),
         color: "bg-indigo-50 text-indigo-700 border-indigo-200"
