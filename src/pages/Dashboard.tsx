@@ -27,9 +27,8 @@ import {
   ChartConfig, ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent
 } from "@/components/ui/chart";
 
-// Configuração de Cores e Labels
+// Configuração de Cores e Labels - REMOVIDO: awaiting_code
 const chartConfig = {
-  awaiting_code: { label: "Aguardando Código", color: "#ec4899" },
   new: { label: "Novo", color: "hsl(var(--status-new))" },
   understanding: { label: "Entendimento", color: "hsl(var(--status-understanding))" },
   construction: { label: "Construção", color: "hsl(var(--status-construction))" },
@@ -43,8 +42,7 @@ const chartConfig = {
   five_days: { label: "Até 5 dias úteis", color: "#3b82f6" },
   late: { label: "Fora do Prazo", color: "#ef4444" },
 
-  // Lead Time Colors
-  time_code: { label: "Até Aguardando Código", color: "#ec4899" },
+  // Lead Time Colors - REMOVIDO: time_code
   time_sign: { label: "Envio da proposta até Aguardando Assinatura de Contrato", color: "#8b5cf6" },
   time_start: { label: "Aguardando Assinatura de Contrato até Start Operacional", color: "#10b981" },
   time_execution: { label: "Start Operacional até Envio para Execução", color: "#6366f1" }
@@ -53,9 +51,8 @@ const chartConfig = {
 type FilterType = 'preset' | 'month' | 'range';
 type PresetPeriod = '30d' | '90d' | '6m' | '1y' | 'all';
 
-// Mapeamento de Subtítulos para o Gráfico
+// Mapeamento de Subtítulos para o Gráfico - REMOVIDO: Aguardando Código
 const leadTimeSubtitles: Record<string, string> = {
-  "Aguardando Código": "Controladoria",
   "Envio da Proposta até Aguardando Assinatura de Contrato": "HNS -> Comercial",
   "Aguardando Assinatura de Contrato até Start Operacional": "Comercial -> Gestão de Contas",
   "Start Operacional até Envio para Execução": "Gestão de Contas -> HNS"
@@ -161,7 +158,7 @@ export default function Dashboard() {
     return Math.round((count / totalFiltered) * 100);
   };
 
-  const awaitingCodeCount = filteredProposals.filter(p => p.status === 'awaiting_code').length;
+  // REMOVIDO: awaitingCodeCount
   const awaitingContractCount = filteredProposals.filter(p => p.status === 'awaiting_contract').length;
   const executionForwardedCount = filteredProposals.filter(p => p.status === 'execution_forwarded').length;
 
@@ -182,7 +179,7 @@ export default function Dashboard() {
   };
 
   const processLeadTimeData = () => {
-    let sumCode = 0, countCode = 0;
+    // REMOVIDO: sumCode, countCode
     let sumSign = 0, countSign = 0;
     let sumStart = 0, countStart = 0;
     let sumExec = 0, countExec = 0;
@@ -190,17 +187,11 @@ export default function Dashboard() {
     filteredProposals.forEach(p => {
       const pLogs = auditLogs.filter(l => l.entity_id === p.id);
 
-      const dateEntry = p.entry_date;
-      const dateNew = getLogDate(p.id, 'new', pLogs);
+      // Lógica de "Code" removida
       const dateDelivered = getLogDate(p.id, 'delivered', pLogs);
       const dateContract = getLogDate(p.id, 'awaiting_contract', pLogs);
       const dateStart = getLogDate(p.id, 'operational_start', pLogs);
       const dateExec = getLogDate(p.id, 'execution_forwarded', pLogs);
-
-      if (dateEntry && dateNew) {
-        const diff = differenceInMinutes(parseISO(dateNew), parseISO(dateEntry));
-        if (diff >= 0) { sumCode += diff; countCode++; }
-      }
 
       if (dateDelivered && dateContract) {
         const diff = differenceInMinutes(parseISO(dateContract), parseISO(dateDelivered));
@@ -218,13 +209,13 @@ export default function Dashboard() {
       }
     });
 
-    const avgCode = countCode > 0 ? Math.round(sumCode / countCode) : 0;
+    // REMOVIDO: avgCode
     const avgSign = countSign > 0 ? Math.round(sumSign / countSign) : 0;
     const avgStart = countStart > 0 ? Math.round(sumStart / countStart) : 0;
     const avgExec = countExec > 0 ? Math.round(sumExec / countExec) : 0;
 
     return [
-      { name: "Aguardando Código", value: avgCode, formatted: formatDuration(avgCode), fill: "#ec4899" },
+      // REMOVIDO objeto referente a Aguardando Código
       { name: "Envio da Proposta até Aguardando Assinatura de Contrato", value: avgSign, formatted: formatDuration(avgSign), fill: "#8b5cf6" },
       { name: "Aguardando Assinatura de Contrato até Start Operacional", value: avgStart, formatted: formatDuration(avgStart), fill: "#10b981" },
       { name: "Start Operacional até Envio para Execução", value: avgExec, formatted: formatDuration(avgExec), fill: "#6366f1" }
@@ -234,12 +225,13 @@ export default function Dashboard() {
   const leadTimeData = processLeadTimeData();
 
   const processPipelineData = () => {
-    const sequence = ['awaiting_code', 'new', 'understanding', 'construction', 'in_review'];
+    // REMOVIDO: 'awaiting_code' da sequência
+    const sequence = ['new', 'understanding', 'construction', 'in_review'];
     return sequence.map(key => ({
       name: chartConfig[key as keyof typeof chartConfig]?.label || key,
       value: filteredProposals.filter(p => p.status === key).length,
       fill: chartConfig[key as keyof typeof chartConfig]?.color,
-      statusKey: key // Adicionado para facilitar o onClick
+      statusKey: key
     })).filter(item => item.value >= 0);
   };
   const pipelineData = processPipelineData();
@@ -423,29 +415,9 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          {/* COLUNA LATERAL */}
+          {/* COLUNA LATERAL - REMOVIDO CARD AGUARDANDO CODIGO */}
           <div className="lg:col-span-3 flex flex-col gap-4 h-full">
-            {/* CARD AGUARDANDO CÓDIGO */}
-            <Card
-              className="bg-white border-none shadow-sm rounded-xl flex-shrink-0 cursor-pointer hover:shadow-md transition-shadow"
-              onClick={() => navigate('/proposals?status=awaiting_code')}
-            >
-              <CardContent className="p-4 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Aguardando Código</p>
-                  <p className="text-xs text-gray-500 font-medium mb-1">Controladoria</p>
-                  <div className="flex items-baseline gap-2 mt-1">
-                    <h4 className="text-2xl font-bold text-gray-900">{awaitingCodeCount}</h4>
-                    <span className="text-xs font-medium text-pink-600 bg-pink-50 px-2 py-0.5 rounded-full">
-                      {calculatePercentage(awaitingCodeCount)}%
-                    </span>
-                  </div>
-                </div>
-                <div className="h-10 w-10 bg-pink-50 rounded-lg flex items-center justify-center">
-                  <Code className="h-5 w-5 text-pink-500" />
-                </div>
-              </CardContent>
-            </Card>
+            
 
             {/* CARD AGUARDANDO ASSINATURA */}
             <Card
@@ -469,27 +441,6 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
-            {/* CARD EXECUÇÃO */}
-            <Card
-              className="bg-white border-none shadow-sm rounded-xl flex-shrink-0 cursor-pointer hover:shadow-md transition-shadow"
-              onClick={() => navigate('/proposals?status=execution_forwarded')}
-            >
-              <CardContent className="p-4 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Encaminhado para Execução</p>
-                  <p className="text-xs text-gray-500 font-medium mb-1">HNS</p>
-                  <div className="flex items-baseline gap-2 mt-1">
-                    <h4 className="text-2xl font-bold text-gray-900">{executionForwardedCount}</h4>
-                    <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
-                      {calculatePercentage(executionForwardedCount)}%
-                    </span>
-                  </div>
-                </div>
-                <div className="h-10 w-10 bg-indigo-50 rounded-lg flex items-center justify-center">
-                  <Send className="h-5 w-5 text-indigo-500" />
-                </div>
-              </CardContent>
-            </Card>
 
             {/* TABELA START OPERACIONAL */}
             <Card className="bg-white border-none shadow-sm rounded-xl flex flex-col flex-1 min-h-[250px]">
@@ -528,6 +479,28 @@ export default function Dashboard() {
                     )}
                   </TableBody>
                 </Table>
+              </CardContent>
+            </Card>
+
+            {/* CARD EXECUÇÃO */}
+            <Card
+              className="bg-white border-none shadow-sm rounded-xl flex-shrink-0 cursor-pointer hover:shadow-md transition-shadow"
+              onClick={() => navigate('/proposals?status=execution_forwarded')}
+            >
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Encaminhado para Execução</p>
+                  <p className="text-xs text-gray-500 font-medium mb-1">HNS</p>
+                  <div className="flex items-baseline gap-2 mt-1">
+                    <h4 className="text-2xl font-bold text-gray-900">{executionForwardedCount}</h4>
+                    <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
+                      {calculatePercentage(executionForwardedCount)}%
+                    </span>
+                  </div>
+                </div>
+                <div className="h-10 w-10 bg-indigo-50 rounded-lg flex items-center justify-center">
+                  <Send className="h-5 w-5 text-indigo-500" />
+                </div>
               </CardContent>
             </Card>
           </div>

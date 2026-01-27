@@ -6,7 +6,7 @@ import {
   Plus, Search, History, MoreHorizontal, FileText, Trash2, Edit,
   Paperclip, X, Link as LinkIcon, ExternalLink, Eye, MessageSquare, Clock,
   CheckCircle2, Circle, CalendarClock, ArrowRight, Binary, PenTool, Hammer, Lock, FilterX,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, Tag
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -25,15 +25,21 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { Proposal, ProposalStatus, AuditLog } from '@/types/database';
+import { Proposal as DbProposal, ProposalStatus, AuditLog } from '@/types/database';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Badge } from '@/components/ui/badge';
 
+// Extensão da interface Proposal para incluir tags se não estiver no type original ainda
+interface Proposal extends DbProposal {
+  tags?: string[] | null;
+}
+
+// REMOVIDO: { value: 'awaiting_code', label: 'Aguardando Código' }
 const statusOptions: { value: ProposalStatus; label: string }[] = [
   { value: 'new', label: 'Novo' },
   { value: 'understanding', label: 'Entendimento' },
   { value: 'construction', label: 'Construção' },
   { value: 'in_review', label: 'Em Revisão' },
-  { value: 'awaiting_code', label: 'Aguardando Código' },
   { value: 'awaiting_contract', label: 'Aguardando Assinatura' },
   { value: 'operational_start', label: 'Start Operacional' },
   { value: 'execution_forwarded', label: 'Encaminhado p/ Execução' },
@@ -42,8 +48,8 @@ const statusOptions: { value: ProposalStatus; label: string }[] = [
 ];
 
 // REGRA 1: Status que não devem aparecer na seleção manual
+// REMOVIDO: awaiting_code
 const automationStatuses = [
-  'awaiting_code',
   'awaiting_contract',
   'operational_start',
   'execution_forwarded'
@@ -57,6 +63,14 @@ const LOCKED_STATUSES = [
   'delivered'
 ];
 
+// Status que "baixam" a prioridade do ESTRATÉGICO (não ficam mais no topo)
+const LOW_PRIORITY_STRATEGIC_STATUSES = [
+  'delivered',
+  'awaiting_contract',
+  'operational_start',
+  'execution_forwarded'
+];
+
 interface Attachment {
   name: string;
   url: string;
@@ -67,6 +81,17 @@ interface ExternalLinkItem {
   name: string;
   url: string;
 }
+
+// Configuração de cores das tags
+const getTagColor = (tag: string) => {
+  const normalizedTag = tag.toUpperCase();
+  if (normalizedTag.includes('ESTRATÉGICO')) return 'bg-red-100 text-red-800 border-red-200 hover:bg-red-200';
+  if (normalizedTag.includes('INBOUND')) return 'bg-blue-100 text-blue-800 border-blue-200 hover:bg-blue-200';
+  if (normalizedTag.includes('OUTBOUND')) return 'bg-orange-100 text-orange-800 border-orange-200 hover:bg-orange-200';
+  if (normalizedTag.includes('BASE')) return 'bg-slate-100 text-slate-800 border-slate-200 hover:bg-slate-200';
+  if (normalizedTag.includes('OPERAÇÕES')) return 'bg-green-100 text-green-800 border-green-200 hover:bg-green-200';
+  return 'bg-gray-100 text-gray-800 border-gray-200 hover:bg-gray-200';
+};
 
 export default function Proposals() {
   const { user, role } = useAuth();
@@ -183,8 +208,6 @@ export default function Proposals() {
       // Cria um mapa: proposal_id -> delivery_date
       const logMap: Record<string, string> = {};
       data.forEach((log: any) => {
-        // Se houver múltiplos, pegamos o primeiro (mais antigo) ou último?
-        // Geralmente o primeiro delivered conta.
         if (!logMap[log.entity_id] || new Date(log.created_at) < new Date(logMap[log.entity_id])) {
           logMap[log.entity_id] = log.created_at;
         }
@@ -273,11 +296,28 @@ export default function Proposals() {
     return true;
   });
 
+  // --- Lógica de Ordenação ---
+  const sortedProposals = [...filteredProposals].sort((a, b) => {
+    // Verifica se é estratégico
+    const isStrategicA = a.tags?.some(t => t.toUpperCase().includes('ESTRATÉGICO'));
+    const isStrategicB = b.tags?.some(t => t.toUpperCase().includes('ESTRATÉGICO'));
+
+    // Verifica se o status retira a prioridade
+    const hasPriorityA = isStrategicA && !LOW_PRIORITY_STRATEGIC_STATUSES.includes(a.status);
+    const hasPriorityB = isStrategicB && !LOW_PRIORITY_STRATEGIC_STATUSES.includes(b.status);
+
+    if (hasPriorityA && !hasPriorityB) return -1; // A vem primeiro
+    if (!hasPriorityA && hasPriorityB) return 1;  // B vem primeiro
+
+    // Desempate padrão por data de criação (mais recente primeiro)
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+
   // --- Lógica de Paginação ---
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentProposals = filteredProposals.slice(indexOfFirstItem, indexOfLastItem);
-  const totalPages = Math.ceil(filteredProposals.length / itemsPerPage);
+  const currentProposals = sortedProposals.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(sortedProposals.length / itemsPerPage);
 
   const handleNextPage = () => {
     if (currentPage < totalPages) {
@@ -292,7 +332,8 @@ export default function Proposals() {
   };
 
   const getTimestampFromLogs = (targetStatus: string, logs: AuditLog[], entryDate?: string): string | null => {
-    if (targetStatus === 'entry' || targetStatus === 'awaiting_code') {
+    // REMOVIDO check de awaiting_code
+    if (targetStatus === 'entry') {
       const createLog = logs.find(l => l.action === 'created');
       return createLog ? createLog.created_at : (entryDate || null);
     }
@@ -325,20 +366,13 @@ export default function Proposals() {
   };
 
   const getProposalMetricsFromLogs = (p: Proposal, logs: AuditLog[]) => {
-    const dateEntry = p.entry_date;
-    const dateCode = getTimestampFromLogs('new', logs);
     const dateDelivered = getTimestampFromLogs('delivered', logs);
     const dateContract = getTimestampFromLogs('awaiting_contract', logs);
     const dateStart = getTimestampFromLogs('operational_start', logs);
     const dateExecution = getTimestampFromLogs('execution_forwarded', logs);
 
     return [
-      {
-        label: "Aguardando Código",
-        subtitle: "Controladoria",
-        ...calculateMetric(dateEntry, dateCode),
-        color: "bg-pink-50 text-pink-700 border-pink-200"
-      },
+      // REMOVIDO: Aguardando Código
       {
         label: "Envio até Assinatura",
         subtitle: "HNS -> Comercial",
@@ -422,7 +456,7 @@ export default function Proposals() {
           links: links,
           created_by: user?.id,
           last_justification: 'Criação inicial via Painel',
-          status: 'awaiting_code',
+          status: 'new', // ALTERADO: Default agora é 'new' pois código é automático
           entry_date: new Date().toISOString()
         })
         .select()
@@ -433,7 +467,7 @@ export default function Proposals() {
         entityType: 'proposal',
         entityId: data.id,
         entityTitle: data.title,
-        newStatus: 'awaiting_code',
+        newStatus: 'new',
       });
       setProposals([data as Proposal, ...proposals]);
       resetForm();
@@ -445,8 +479,6 @@ export default function Proposals() {
     }
   };
 
-  // --- Função HandleUpdate Modificada ---
-  // Agora verifica mudança de data e impede salvamento sem justificativa
   const handleUpdate = () => {
     if (isAccountManager) return;
     if (!editingProposal || !formData.title.trim()) return;
@@ -464,7 +496,6 @@ export default function Proposals() {
     executeProposalUpdate();
   };
 
-  // --- Função centralizada para executar o Update ---
   const executeProposalUpdate = async (justificationForDeadline?: string) => {
     if (!editingProposal) return;
 
@@ -630,9 +661,7 @@ export default function Proposals() {
     );
   };
 
-  // Funcao auxiliar para identificar o fluxo direto (sem codigo, ja em contrato)
   const isDirectContractFlow = (p: Proposal) => {
-    // Se nao tem codigo E esta em um status avaçado (contrato pra frente)
     return !p.project_code && ['awaiting_contract', 'operational_start', 'execution_forwarded'].includes(p.status);
   }
 
@@ -766,6 +795,7 @@ export default function Proposals() {
             <TableHeader>
               <TableRow className="border-border hover:bg-transparent">
                 <TableHead className="text-muted-foreground">Título / Código</TableHead>
+                <TableHead className="text-muted-foreground">Tags</TableHead>
                 <TableHead className="text-muted-foreground">Status</TableHead>
                 <TableHead className="text-muted-foreground">Última Justificativa</TableHead>
                 <TableHead className="text-muted-foreground text-right">Ações</TableHead>
@@ -774,7 +804,7 @@ export default function Proposals() {
             <TableBody>
               {currentProposals.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="h-32 text-center text-muted-foreground">
+                  <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
                     <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
                     <p>Nenhuma proposta encontrada</p>
                   </TableCell>
@@ -782,10 +812,6 @@ export default function Proposals() {
               ) : (
                 currentProposals.map((proposal, index) => {
                   const isAutomationStatus = automationStatuses.includes(proposal.status);
-                  // REGRA 2: Bloqueia se estiver Aguardando Código e não tiver código
-                  const isLockedAwaitingCode = proposal.status === 'awaiting_code' && !proposal.project_code;
-
-                  // REGRA 5: Verifica se está bloqueado para edição
                   const isLocked = LOCKED_STATUSES.includes(proposal.status);
 
                   return (
@@ -807,30 +833,27 @@ export default function Proposals() {
                           </div>
                         </div>
                       </TableCell>
+                      {/* NOVA COLUNA DE TAGS */}
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1 max-w-[200px]">
+                          {proposal.tags && proposal.tags.length > 0 ? (
+                            proposal.tags.map((tag, idx) => (
+                              <Badge key={idx} className={`text-[10px] px-1.5 py-0 rounded-sm font-bold shadow-none ${getTagColor(tag)}`}>
+                                {tag}
+                              </Badge>
+                            ))
+                          ) : (
+                            <span className="text-xs text-muted-foreground italic">-</span>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
-                        {isAccountManager || isAutomationStatus || isLockedAwaitingCode ? (
+                        {isAccountManager || isAutomationStatus ? (
                           <div title={
                             isAccountManager ? "Sem permissão" :
-                              isLockedAwaitingCode ? "Aguarde a geração do código para alterar o status" :
-                                "Status controlado via automação"
+                              "Status controlado via automação"
                           }>
-                            {isLockedAwaitingCode ? (
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <div className="flex items-center gap-2 cursor-not-allowed opacity-80">
-                                      <StatusBadge status={proposal.status} />
-                                      <Lock className="w-3 h-3 text-muted-foreground" />
-                                    </div>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>Aguardando geração automática do código</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            ) : (
-                              <StatusBadge status={proposal.status} />
-                            )}
+                            <StatusBadge status={proposal.status} />
                           </div>
                         ) : (
                           <Select
@@ -841,7 +864,6 @@ export default function Proposals() {
                               <StatusBadge status={proposal.status} />
                             </SelectTrigger>
                             <SelectContent>
-                              {/* REGRA 1: Filtra status de automação na mudança manual */}
                               {statusOptions
                                 .filter(opt => !automationStatuses.includes(opt.value))
                                 .map(option => (
@@ -927,7 +949,7 @@ export default function Proposals() {
 
             <div className="flex items-center gap-4">
               <span className="text-sm text-muted-foreground">
-                Mostrando {currentProposals.length > 0 ? indexOfFirstItem + 1 : 0}-{Math.min(indexOfLastItem, filteredProposals.length)} de {filteredProposals.length}
+                Mostrando {currentProposals.length > 0 ? indexOfFirstItem + 1 : 0}-{Math.min(indexOfLastItem, sortedProposals.length)} de {sortedProposals.length}
               </span>
               <div className="flex gap-1">
                 <Button
@@ -958,7 +980,6 @@ export default function Proposals() {
           <DialogContent className="sm:max-w-5xl bg-card border-border h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
             {viewingProposal && (
               <>
-                {/* Header Reformulado (REGRA 3) */}
                 <div className="px-6 py-5 border-b bg-gray-50/50 shrink-0">
                   <div className="flex justify-between items-start mb-4">
                     <div>
@@ -970,7 +991,12 @@ export default function Proposals() {
                         )}
                         <DialogTitle className="text-2xl font-bold text-[#612cb5] leading-none">{viewingProposal.title}</DialogTitle>
                       </div>
-                      <StatusBadge status={viewingProposal.status} />
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={viewingProposal.status} />
+                        {viewingProposal.tags && viewingProposal.tags.map((tag, idx) => (
+                          <Badge key={idx} className={`text-[10px] ${getTagColor(tag)}`}>{tag}</Badge>
+                        ))}
+                      </div>
                     </div>
                   </div>
 
@@ -1002,7 +1028,6 @@ export default function Proposals() {
                           ) : (
                             <span className="text-lg font-mono text-gray-300">--</span>
                           )}
-                          {/* Subtítulo da Métrica no Modal */}
                           <span className="text-[10px] text-gray-500 font-medium mt-1 uppercase tracking-tight">{metric.subtitle}</span>
                         </div>
                       ))
@@ -1017,7 +1042,6 @@ export default function Proposals() {
                           <h4 className="flex items-center gap-2 font-semibold text-gray-900 mb-2">
                             <FileText className="w-4 h-4 text-[#612cb5]" /> Descrição
                           </h4>
-                          {/* CORREÇÃO: Adicionado break-words para evitar overflow de texto */}
                           <div className="bg-gray-50 p-4 rounded-lg border text-sm text-gray-700 whitespace-pre-wrap break-words leading-relaxed">
                             {viewingProposal.description || "Sem descrição."}
                           </div>
@@ -1091,7 +1115,6 @@ export default function Proposals() {
                       </h4>
                       <div className="space-y-0">
                         {(() => {
-                          // CORREÇÃO: Lógica para ocultar etapas anteriores se for fluxo direto de contrato
                           const isDirect = isDirectContractFlow(viewingProposal);
 
                           return (
@@ -1102,13 +1125,8 @@ export default function Proposals() {
                                 icon={Clock}
                               />
 
-                              <TimelineStep
-                                label="Código Gerado (Novo)"
-                                date={isDirect ? null : getTimestampFromLogs('new', viewingProposalLogs)}
-                                icon={Binary}
-                              />
+                              {/* REMOVIDO: Código Gerado (Novo) step */}
 
-                              {/* REGRA 4: Etapa Construção */}
                               <TimelineStep
                                 label="Em Construção"
                                 date={isDirect ? null : getTimestampFromLogs('construction', viewingProposalLogs)}
@@ -1250,7 +1268,6 @@ export default function Proposals() {
                   <Textarea id="edit-description" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} className="input-enhanced min-h-[80px]" />
                 </div>
 
-                {/* BLOCOS DE UI ADICIONADOS PARA EDIÇÃO */}
                 <div className="space-y-2 bg-secondary/20 p-3 rounded-lg border border-border/50">
                   <Label className="flex items-center gap-2 text-[#612cb5]"><LinkIcon className="h-4 w-4" /> Links Externos</Label>
                   <div className="flex gap-2">
