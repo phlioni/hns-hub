@@ -70,13 +70,12 @@ serve(async (req) => {
 
         // 4. Montar a Linha do Tempo Estruturada
         const processSteps = [
-            { step: 1, label: "Solicitação Recebida", status_key: "awaiting_code" },
-            { step: 2, label: "Código Gerado", status_key: "new" },
-            { step: 3, label: "Em Construção", status_key: "construction" },
-            { step: 4, label: "Proposta Enviada", status_key: "delivered" },
-            { step: 5, label: "Aguardando Assinatura", status_key: "awaiting_contract" },
-            { step: 6, label: "Start Operacional", status_key: "operational_start" },
-            { step: 7, label: "Encaminhado p/ Execução", status_key: "execution_forwarded" }
+            { step: 1, label: "Solicitação Recebida", status_key: "new" },
+            { step: 2, label: "Em Construção", status_key: "construction" },
+            { step: 3, label: "Proposta Enviada", status_key: "delivered" },
+            { step: 4, label: "Aguardando Assinatura", status_key: "awaiting_contract" },
+            { step: 5, label: "Start Operacional", status_key: "operational_start" },
+            { step: 6, label: "Encaminhado p/ Execução", status_key: "execution_forwarded" }
         ]
 
         const structuredTimeline = processSteps.map(step => {
