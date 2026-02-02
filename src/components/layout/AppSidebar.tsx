@@ -11,6 +11,7 @@ import {
   Shield,
   BarChart3,
   ShieldCheck,
+  Hash, // Ícone adicionado
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
@@ -30,6 +31,12 @@ const navItems = [
     url: '/proposals',
     icon: FileText,
     allowedRoles: ['admin', 'member', 'account_manager']
+  },
+  {
+    title: 'Códigos de Projeto',
+    url: '/project-codes',
+    icon: Hash,
+    allowedRoles: ['admin', 'account_manager']
   },
   // OKR ITEM REMOVIDO CONFORME SOLICITADO
   // {

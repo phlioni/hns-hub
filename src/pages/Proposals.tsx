@@ -6,7 +6,7 @@ import {
   Plus, Search, History, MoreHorizontal, FileText, Trash2, Edit,
   Paperclip, X, Link as LinkIcon, ExternalLink, Eye, MessageSquare, Clock,
   CheckCircle2, Circle, CalendarClock, ArrowRight, Binary, PenTool, Hammer, Lock, FilterX,
-  ChevronLeft, ChevronRight, Tag
+  ChevronLeft, ChevronRight, Tag, Loader2, Check, ChevronsUpDown
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -28,10 +28,31 @@ import { toast } from 'sonner';
 import { Proposal as DbProposal, ProposalStatus, AuditLog } from '@/types/database';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
+import { cn } from "@/lib/utils";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
-// Extensão da interface Proposal para incluir tags se não estiver no type original ainda
+// --- INTERFACES ---
+
 interface Proposal extends DbProposal {
   tags?: string[] | null;
+}
+
+interface ClientCode {
+  id: string;
+  project_code: string;
+  client_name: string;
 }
 
 // REMOVIDO: { value: 'awaiting_code', label: 'Aguardando Código' }
@@ -48,7 +69,6 @@ const statusOptions: { value: ProposalStatus; label: string }[] = [
 ];
 
 // REGRA 1: Status que não devem aparecer na seleção manual
-// REMOVIDO: awaiting_code
 const automationStatuses = [
   'awaiting_contract',
   'operational_start',
@@ -63,7 +83,7 @@ const LOCKED_STATUSES = [
   'delivered'
 ];
 
-// Status que "baixam" a prioridade do ESTRATÉGICO (não ficam mais no topo)
+// Status que "baixam" a prioridade do ESTRATÉGICO
 const LOW_PRIORITY_STRATEGIC_STATUSES = [
   'delivered',
   'awaiting_contract',
@@ -93,6 +113,100 @@ const getTagColor = (tag: string) => {
   return 'bg-gray-100 text-gray-800 border-gray-200 hover:bg-gray-200';
 };
 
+// --- COMPONENTE COMBOBOX (SEARCHABLE SELECT) ---
+interface ProjectCodeComboboxProps {
+  value: string;
+  onChange: (value: string) => void;
+  clientCodes: ClientCode[];
+  onOpenNewCode: () => void;
+}
+
+const ProjectCodeCombobox = ({ value, onChange, clientCodes, onOpenNewCode }: ProjectCodeComboboxProps) => {
+  const [open, setOpen] = useState(false);
+
+  // Garante que o valor atual aparece mesmo que não esteja na lista inicial
+  const options = [...clientCodes];
+  if (value && !options.find(c => c.project_code === value)) {
+    options.push({ id: 'temp', project_code: value, client_name: '(Código Manual/Antigo)' });
+  }
+
+  const selectedCode = options.find((code) => code.project_code === value);
+
+  return (
+    <div className="flex gap-2 w-full">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className="w-full justify-between input-enhanced font-mono"
+          >
+            {value ? (
+              <span className="truncate">
+                <span className="font-bold text-[#612cb5]">{selectedCode?.project_code || value}</span>
+                {selectedCode?.client_name && (
+                  <span className="text-muted-foreground ml-2 text-xs">- {selectedCode.client_name}</span>
+                )}
+              </span>
+            ) : (
+              <span className="text-muted-foreground">Selecione ou pesquise o código...</span>
+            )}
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[400px] p-0" align="start">
+          <Command>
+            <CommandInput placeholder="Filtrar por código ou cliente..." />
+            <CommandList>
+              <CommandEmpty>Nenhum código encontrado.</CommandEmpty>
+              <CommandGroup>
+                {options.map((code) => (
+                  <CommandItem
+                    key={code.id}
+                    value={`${code.project_code} ${code.client_name}`} // Permite busca por ambos
+                    onSelect={() => {
+                      onChange(code.project_code);
+                      setOpen(false);
+                    }}
+                    className="font-mono cursor-pointer"
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        value === code.project_code ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                    <span className="font-bold text-[#612cb5] mr-2">{code.project_code}</span>
+                    <span className="text-muted-foreground text-xs truncate">- {code.client_name}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              className="shrink-0 border-[#612cb5]/30 text-[#612cb5] hover:bg-[#612cb5]/10"
+              onClick={onOpenNewCode}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Criar novo código rápido</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </div>
+  );
+};
+
+
 export default function Proposals() {
   const { user, role } = useAuth();
   const { logAudit } = useAuditLog();
@@ -100,6 +214,12 @@ export default function Proposals() {
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Estados de Client Codes
+  const [clientCodes, setClientCodes] = useState<ClientCode[]>([]);
+  const [isNewCodeDialogOpen, setIsNewCodeDialogOpen] = useState(false);
+  const [newCodeData, setNewCodeData] = useState({ project_code: '', client_name: '' });
+  const [isSavingCode, setIsSavingCode] = useState(false);
 
   // Estados de Paginação
   const [currentPage, setCurrentPage] = useState(1);
@@ -112,8 +232,6 @@ export default function Proposals() {
   const viewMode = searchParams.get('view');
 
   const [statusFilter, setStatusFilter] = useState<string>('all');
-
-  // Estado para armazenar logs de entrega para cálculo de SLA na lista
   const [deliveryLogs, setDeliveryLogs] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -154,6 +272,7 @@ export default function Proposals() {
 
   useEffect(() => {
     fetchProposals();
+    fetchClientCodes();
   }, []);
 
   // Se houver filtro de SLA ou Mês, precisamos buscar os logs de entrega para filtrar corretamente
@@ -177,6 +296,20 @@ export default function Proposals() {
     setCurrentPage(1);
   }, [searchTerm, statusFilter, slaParam, monthParam, viewMode]);
 
+  const fetchClientCodes = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('client_codes')
+        .select('id, project_code, client_name')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setClientCodes(data as ClientCode[]);
+    } catch (error) {
+      console.error('Erro ao buscar códigos:', error);
+    }
+  };
+
   const fetchProposals = async () => {
     try {
       const { data, error } = await supabase
@@ -196,7 +329,6 @@ export default function Proposals() {
 
   const fetchDeliveryLogs = async () => {
     try {
-      // Busca logs onde o status mudou para 'delivered'
       const { data, error } = await supabase
         .from('audit_logs')
         .select('entity_id, created_at')
@@ -205,7 +337,6 @@ export default function Proposals() {
 
       if (error) throw error;
 
-      // Cria um mapa: proposal_id -> delivery_date
       const logMap: Record<string, string> = {};
       data.forEach((log: any) => {
         if (!logMap[log.entity_id] || new Date(log.created_at) < new Date(logMap[log.entity_id])) {
@@ -237,6 +368,76 @@ export default function Proposals() {
     }
   };
 
+  // --- LÓGICA DE SALVAMENTO DE NOVO CÓDIGO (RÁPIDO) ---
+  const handleSaveNewCode = async () => {
+    if (!newCodeData.project_code || !newCodeData.client_name) {
+      toast.error("Preencha o código e o nome do cliente");
+      return;
+    }
+
+    setIsSavingCode(true);
+    try {
+      // Mesma lógica de extração usada no ProjectCodes.tsx para consistência
+      const rawCode = newCodeData.project_code.toUpperCase().trim();
+      const regex = /^([A-Z]+)(\d+)-(\d{2,4})$/;
+      const match = rawCode.match(regex);
+
+      let inferredPrefix = "MANUAL";
+      let inferredSequence = 0;
+      let inferredYear = new Date().getFullYear().toString().slice(-2);
+
+      if (match) {
+        inferredPrefix = match[1];
+        inferredSequence = parseInt(match[2], 10);
+        inferredYear = match[3].slice(-2);
+      } else {
+        const parts = rawCode.split('-');
+        if (parts.length > 0) {
+          const prefixMatch = parts[0].match(/^([A-Z]+)/);
+          if (prefixMatch) inferredPrefix = prefixMatch[1];
+          const seqMatch = parts[0].match(/(\d+)$/);
+          if (seqMatch) inferredSequence = parseInt(seqMatch[1], 10);
+        }
+        if (parts.length > 1) {
+          const y = parts[1];
+          if (y.length >= 2) inferredYear = y.slice(-2);
+        }
+      }
+
+      const { data, error } = await supabase.from("client_codes").insert({
+        project_code: rawCode,
+        client_name: newCodeData.client_name,
+        code_prefix: inferredPrefix,
+        code_year: inferredYear,
+        sequence_number: inferredSequence,
+        reason: "Criação Rápida via Propostas"
+      }).select().single();
+
+      if (error) throw error;
+
+      toast.success("Código criado com sucesso!");
+
+      // Atualiza lista e seleciona o novo código
+      const newCode: ClientCode = { id: data.id, project_code: data.project_code, client_name: data.client_name };
+      setClientCodes([newCode, ...clientCodes]);
+      setFormData(prev => ({ ...prev, project_code: newCode.project_code }));
+
+      // Limpa e fecha
+      setNewCodeData({ project_code: '', client_name: '' });
+      setIsNewCodeDialogOpen(false);
+
+    } catch (error: any) {
+      console.error(error);
+      if (error.message?.includes("duplicate")) {
+        toast.error("Este código já existe!");
+      } else {
+        toast.error("Erro ao criar código.");
+      }
+    } finally {
+      setIsSavingCode(false);
+    }
+  };
+
   const clearFilters = () => {
     setSearchTerm('');
     setStatusFilter('all');
@@ -263,28 +464,22 @@ export default function Proposals() {
       if (!hasDelivery) return false;
     }
 
-    // 4. Filtros de SLA e Mês (Dependem dos logs de entrega)
+    // 4. Filtros de SLA e Mês
     if (slaParam || monthParam) {
-      const deliveryDateStr = deliveryLogs[proposal.id] || proposal.delivery_date; // fallback se ainda existir na tabela
-
-      // Se não tem data de entrega, não entra nos gráficos de SLA
+      const deliveryDateStr = deliveryLogs[proposal.id] || proposal.delivery_date;
       if (!deliveryDateStr) return false;
 
       const deliveryDate = parseISO(deliveryDateStr);
 
-      // Filtro de Mês
       if (monthParam) {
         const targetMonth = parseISO(monthParam + '-01');
         if (!isSameMonth(deliveryDate, targetMonth)) return false;
       }
 
-      // Filtro de SLA
       if (slaParam) {
         const entryDate = parseISO(proposal.entry_date);
-
         let isLate = false;
         if (proposal.deadline && deliveryDate > parseISO(proposal.deadline)) isLate = true;
-
         const businessDays = differenceInBusinessDays(deliveryDate, entryDate);
 
         if (slaParam === 'late' && !isLate) return false;
@@ -298,18 +493,15 @@ export default function Proposals() {
 
   // --- Lógica de Ordenação ---
   const sortedProposals = [...filteredProposals].sort((a, b) => {
-    // Verifica se é estratégico
     const isStrategicA = a.tags?.some(t => t.toUpperCase().includes('ESTRATÉGICO'));
     const isStrategicB = b.tags?.some(t => t.toUpperCase().includes('ESTRATÉGICO'));
 
-    // Verifica se o status retira a prioridade
     const hasPriorityA = isStrategicA && !LOW_PRIORITY_STRATEGIC_STATUSES.includes(a.status);
     const hasPriorityB = isStrategicB && !LOW_PRIORITY_STRATEGIC_STATUSES.includes(b.status);
 
-    if (hasPriorityA && !hasPriorityB) return -1; // A vem primeiro
-    if (!hasPriorityA && hasPriorityB) return 1;  // B vem primeiro
+    if (hasPriorityA && !hasPriorityB) return -1;
+    if (!hasPriorityA && hasPriorityB) return 1;
 
-    // Desempate padrão por data de criação (mais recente primeiro)
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
 
@@ -332,7 +524,6 @@ export default function Proposals() {
   };
 
   const getTimestampFromLogs = (targetStatus: string, logs: AuditLog[], entryDate?: string): string | null => {
-    // REMOVIDO check de awaiting_code
     if (targetStatus === 'entry') {
       const createLog = logs.find(l => l.action === 'created');
       return createLog ? createLog.created_at : (entryDate || null);
@@ -372,7 +563,6 @@ export default function Proposals() {
     const dateExecution = getTimestampFromLogs('execution_forwarded', logs);
 
     return [
-      // REMOVIDO: Aguardando Código
       {
         label: "Envio até Assinatura",
         subtitle: "HNS -> Comercial",
@@ -456,7 +646,7 @@ export default function Proposals() {
           links: links,
           created_by: user?.id,
           last_justification: 'Criação inicial via Painel',
-          status: 'new', // ALTERADO: Default agora é 'new' pois código é automático
+          status: 'new',
           entry_date: new Date().toISOString()
         })
         .select()
@@ -489,10 +679,9 @@ export default function Proposals() {
     if (originalDeadline !== newDeadline) {
       setEditJustification('');
       setPendingDeadlineChange(true);
-      return; // Interrompe o fluxo para abrir o modal
+      return;
     }
 
-    // Se a data não mudou, executa update normal sem justificativa extra
     executeProposalUpdate();
   };
 
@@ -511,7 +700,6 @@ export default function Proposals() {
         links: links,
       };
 
-      // Se houver justificativa de prazo, atualizamos o campo last_justification
       if (justificationForDeadline) {
         updatePayload.last_justification = `Alteração de Prazo: ${justificationForDeadline}`;
       }
@@ -535,7 +723,7 @@ export default function Proposals() {
 
       setProposals(proposals.map(p => p.id === data.id ? data as Proposal : p));
       setEditingProposal(null);
-      setPendingDeadlineChange(false); // Fecha modal se estiver aberto
+      setPendingDeadlineChange(false);
       resetForm();
       toast.success('Proposta atualizada com sucesso');
     } catch (error) {
@@ -695,7 +883,13 @@ export default function Proposals() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="project_code">Código do Projeto</Label>
-                    <Input id="project_code" value={formData.project_code} onChange={e => setFormData({ ...formData, project_code: e.target.value })} className="input-enhanced font-mono" />
+                    {/* SELETOR REFORMULADO (COMBOBOX) */}
+                    <ProjectCodeCombobox
+                      value={formData.project_code}
+                      onChange={(val) => setFormData({ ...formData, project_code: val })}
+                      clientCodes={clientCodes}
+                      onOpenNewCode={() => setIsNewCodeDialogOpen(true)}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="deadline">Prazo</Label>
@@ -744,6 +938,42 @@ export default function Proposals() {
             </Dialog>
           )}
         </div>
+
+        {/* --- DIALOGO DE CRIAÇÃO RÁPIDA DE CÓDIGO (COMPARTILHADO) --- */}
+        <Dialog open={isNewCodeDialogOpen} onOpenChange={setIsNewCodeDialogOpen}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="text-[#612cb5]">Novo Código Rápido</DialogTitle>
+              <DialogDescription>Crie um código para usar nesta proposta imediatamente.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <div className="space-y-1">
+                <Label>Nome do Cliente</Label>
+                <Input
+                  placeholder="Ex: Movecta"
+                  value={newCodeData.client_name}
+                  onChange={(e) => setNewCodeData({ ...newCodeData, client_name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Código do Projeto</Label>
+                <Input
+                  placeholder="Ex: MVT032-26"
+                  className="font-mono uppercase"
+                  value={newCodeData.project_code}
+                  onChange={(e) => setNewCodeData({ ...newCodeData, project_code: e.target.value.toUpperCase() })}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setIsNewCodeDialogOpen(false)}>Cancelar</Button>
+              <Button onClick={handleSaveNewCode} disabled={isSavingCode} className="bg-[#612cb5] text-white">
+                {isSavingCode && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Salvar e Usar
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Filter Feedback */}
         {(statusFilter !== 'all' || slaParam || monthParam) && (
@@ -1257,7 +1487,13 @@ export default function Proposals() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="edit-project_code">Código do Projeto</Label>
-                  <Input id="edit-project_code" value={formData.project_code} onChange={e => setFormData({ ...formData, project_code: e.target.value })} className="input-enhanced font-mono" />
+                  {/* SELETOR REFORMULADO (COMBOBOX) */}
+                  <ProjectCodeCombobox
+                    value={formData.project_code}
+                    onChange={(val) => setFormData({ ...formData, project_code: val })}
+                    clientCodes={clientCodes}
+                    onOpenNewCode={() => setIsNewCodeDialogOpen(true)}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="edit-deadline">Prazo</Label>
