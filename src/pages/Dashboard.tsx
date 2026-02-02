@@ -269,7 +269,8 @@ export default function Dashboard() {
       grouped[key].total += 1;
     });
 
-    return Object.values(grouped);
+    // CORREÇÃO: Ordenar o array resultante pela data (rawDate) em ordem crescente
+    return Object.values(grouped).sort((a, b) => a.rawDate.localeCompare(b.rawDate));
   };
   const deliveryChartData = processDeliveryMetrics();
 
@@ -417,7 +418,7 @@ export default function Dashboard() {
 
           {/* COLUNA LATERAL - REMOVIDO CARD AGUARDANDO CODIGO */}
           <div className="lg:col-span-3 flex flex-col gap-4 h-full">
-            
+
 
             {/* CARD AGUARDANDO ASSINATURA */}
             <Card
