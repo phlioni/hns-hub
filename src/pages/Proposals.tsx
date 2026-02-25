@@ -91,6 +91,19 @@ const LOW_PRIORITY_STRATEGIC_STATUSES = [
   'execution_forwarded'
 ];
 
+// --- ORDEM DE EXIBIÇÃO DA ESTEIRA ---
+const STATUS_ORDER: Record<string, number> = {
+  'new': 1,
+  'understanding': 2,
+  'construction': 3,
+  'in_review': 4,
+  'awaiting_contract': 5,
+  'operational_start': 6,
+  'execution_forwarded': 7,
+  'delivered': 8,
+  'cancelled': 9
+};
+
 interface Attachment {
   name: string;
   url: string;
@@ -493,6 +506,7 @@ export default function Proposals() {
 
   // --- Lógica de Ordenação ---
   const sortedProposals = [...filteredProposals].sort((a, b) => {
+    // 1. Regra Estratégico (Prioridade Máxima)
     const isStrategicA = a.tags?.some(t => t.toUpperCase().includes('ESTRATÉGICO'));
     const isStrategicB = b.tags?.some(t => t.toUpperCase().includes('ESTRATÉGICO'));
 
@@ -502,7 +516,19 @@ export default function Proposals() {
     if (hasPriorityA && !hasPriorityB) return -1;
     if (!hasPriorityA && hasPriorityB) return 1;
 
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    // 2. Ordenação por Status na esteira (Novo > Entendimento > Construção...)
+    const orderA = STATUS_ORDER[a.status] || 99;
+    const orderB = STATUS_ORDER[b.status] || 99;
+
+    if (orderA !== orderB) {
+      return orderA - orderB;
+    }
+
+    // 3. Desempate: Modificados/Criados mais recentemente primeiro dentro do mesmo status
+    const dateA = new Date(a.updated_at || a.created_at).getTime();
+    const dateB = new Date(b.updated_at || b.created_at).getTime();
+
+    return dateB - dateA;
   });
 
   // --- Lógica de Paginação ---
