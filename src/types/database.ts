@@ -42,6 +42,9 @@ export interface Proposal {
   id: string;
   title: string;
   description: string | null;
+  segment: string | null;
+  needs: string | null;
+  analysis: string | null;
   pre_analysis: string | null;
   pre_proposal: string | null;
   attachments: any[];
@@ -49,12 +52,15 @@ export interface Proposal {
   status: ProposalStatus;
   entry_date: string;
   deadline: string | null;
+  delivery_date?: string | null;
   idemail: string | null;
 
   // As datas específicas foram removidas.
   // O histórico é derivado de AuditLog.
 
   project_code: string | null;
+  tags?: string[] | null;
+  owner: string | null;
   last_justification: string | null;
   created_by: string | null;
   created_at: string;

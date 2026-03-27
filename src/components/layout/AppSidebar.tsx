@@ -2,16 +2,13 @@ import { useLocation, Link } from 'react-router-dom';
 import {
   LayoutDashboard,
   FileText,
-  Target,
-  Inbox,
   Settings,
   LogOut,
   ChevronLeft,
   Menu,
   Shield,
-  BarChart3,
-  ShieldCheck,
-  Hash, // Ícone adicionado
+  Hash,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
@@ -30,6 +27,12 @@ const navItems = [
     title: 'Propostas',
     url: '/proposals',
     icon: FileText,
+    allowedRoles: ['admin', 'member', 'account_manager']
+  },
+  {
+    title: 'Relatórios',
+    url: '/reports',
+    icon: FileSpreadsheet,
     allowedRoles: ['admin', 'member', 'account_manager']
   },
   {

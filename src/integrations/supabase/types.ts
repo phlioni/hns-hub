@@ -197,12 +197,16 @@ export type Database = {
           created_by: string | null
           delivery_date: string | null
           description: string | null
+          analysis: string | null
+          needs: string | null
+          segment: string | null
           entry_date: string
           id: string
           pre_analysis: string | null
           pre_proposal: string | null
           project_code: string | null
           last_justification: string | null
+          owner: string | null
           status: Database["public"]["Enums"]["proposal_status"]
           title: string
           updated_at: string
@@ -213,12 +217,16 @@ export type Database = {
           created_by?: string | null
           delivery_date?: string | null
           description?: string | null
+          analysis?: string | null
+          needs?: string | null
+          segment?: string | null
           entry_date?: string
           id?: string
           pre_analysis?: string | null
           pre_proposal?: string | null
           project_code?: string | null
           last_justification?: string | null
+          owner?: string | null
           status?: Database["public"]["Enums"]["proposal_status"]
           title: string
           updated_at?: string
@@ -229,12 +237,16 @@ export type Database = {
           created_by?: string | null
           delivery_date?: string | null
           description?: string | null
+          analysis?: string | null
+          needs?: string | null
+          segment?: string | null
           entry_date?: string
           id?: string
           pre_analysis?: string | null
           pre_proposal?: string | null
           project_code?: string | null
           last_justification?: string | null
+          owner?: string | null
           status?: Database["public"]["Enums"]["proposal_status"]
           title?: string
           updated_at?: string

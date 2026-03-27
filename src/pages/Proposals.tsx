@@ -6,7 +6,8 @@ import {
   Plus, Search, History, MoreHorizontal, FileText, Trash2, Edit,
   Paperclip, X, Link as LinkIcon, ExternalLink, Eye, MessageSquare, Clock,
   CheckCircle2, Circle, CalendarClock, ArrowRight, Binary, PenTool, Hammer, Lock, FilterX,
-  ChevronLeft, ChevronRight, Tag, Loader2, Check, ChevronsUpDown
+  ChevronLeft, ChevronRight, Tag, Loader2, Check, ChevronsUpDown,
+  CalendarDays, User, Layers, ListChecks, ClipboardList, BarChart3,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -275,10 +276,14 @@ export default function Proposals() {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
+    segment: '',
+    needs: '',
+    analysis: '',
     project_code: '',
     pre_analysis: '',
     pre_proposal: '',
     deadline: '',
+    owner: '',
   });
 
   const isAccountManager = role === 'account_manager';
@@ -664,10 +669,14 @@ export default function Proposals() {
         .insert({
           title: formData.title,
           description: formData.description,
+          segment: formData.segment.trim() || null,
+          needs: formData.needs.trim() || null,
+          analysis: formData.analysis.trim() || null,
           project_code: formData.project_code || null,
           pre_analysis: formData.pre_analysis,
           pre_proposal: formData.pre_proposal,
           deadline: formData.deadline || null,
+          owner: formData.owner.trim() || null,
           attachments: attachments,
           links: links,
           created_by: user?.id,
@@ -718,6 +727,9 @@ export default function Proposals() {
       const updatePayload: any = {
         title: formData.title,
         description: formData.description,
+        segment: formData.segment.trim() || null,
+        needs: formData.needs.trim() || null,
+        analysis: formData.analysis.trim() || null,
         project_code: formData.project_code || null,
         pre_analysis: formData.pre_analysis,
         pre_proposal: formData.pre_proposal,
@@ -728,6 +740,10 @@ export default function Proposals() {
 
       if (justificationForDeadline) {
         updatePayload.last_justification = `Alteração de Prazo: ${justificationForDeadline}`;
+      }
+
+      if (!String(editingProposal.owner ?? '').trim()) {
+        updatePayload.owner = formData.owner.trim() || null;
       }
 
       const { data, error } = await supabase
@@ -759,7 +775,7 @@ export default function Proposals() {
   };
 
   const resetForm = () => {
-    setFormData({ title: '', description: '', project_code: '', pre_analysis: '', pre_proposal: '', deadline: '' });
+    setFormData({ title: '', description: '', segment: '', needs: '', analysis: '', project_code: '', pre_analysis: '', pre_proposal: '', deadline: '', owner: '' });
     setAttachments([]);
     setLinks([]);
     setNewLink({ name: '', url: '' });
@@ -834,10 +850,14 @@ export default function Proposals() {
     setFormData({
       title: proposal.title,
       description: proposal.description || '',
+      segment: proposal.segment ?? '',
+      needs: proposal.needs ?? '',
+      analysis: proposal.analysis ?? '',
       project_code: proposal.project_code || '',
       pre_analysis: proposal.pre_analysis || '',
       pre_proposal: proposal.pre_proposal || '',
       deadline: proposal.deadline ? new Date(proposal.deadline).toISOString().split('T')[0] : '',
+      owner: proposal.owner ?? '',
     });
     // @ts-ignore
     setAttachments(proposal.attachments || []);
@@ -922,8 +942,24 @@ export default function Proposals() {
                     <Input id="deadline" type="date" value={formData.deadline} onChange={e => setFormData({ ...formData, deadline: e.target.value })} className="input-enhanced" />
                   </div>
                   <div className="space-y-2">
+                    <Label htmlFor="owner">Responsável pela solicitação</Label>
+                    <Input id="owner" value={formData.owner} onChange={e => setFormData({ ...formData, owner: e.target.value })} className="input-enhanced" placeholder="Nome do responsável" />
+                  </div>
+                  <div className="space-y-2">
                     <Label htmlFor="description">Descrição</Label>
                     <Textarea id="description" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} className="input-enhanced min-h-[80px]" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="segment">Segmento</Label>
+                    <Input id="segment" value={formData.segment} onChange={e => setFormData({ ...formData, segment: e.target.value })} className="input-enhanced" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="needs">Necessidades</Label>
+                    <Textarea id="needs" value={formData.needs} onChange={e => setFormData({ ...formData, needs: e.target.value })} className="input-enhanced min-h-[72px]" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="analysis">Análise de Necessidades</Label>
+                    <Textarea id="analysis" value={formData.analysis} onChange={e => setFormData({ ...formData, analysis: e.target.value })} className="input-enhanced min-h-[72px]" />
                   </div>
 
                   <div className="space-y-2 bg-secondary/20 p-3 rounded-lg border border-border/50">
@@ -1233,199 +1269,344 @@ export default function Proposals() {
 
         {/* --- DETAILED VIEW MODAL --- */}
         <Dialog open={!!viewingProposal} onOpenChange={() => setViewingProposal(null)}>
-          <DialogContent className="sm:max-w-5xl bg-card border-border h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+          <DialogContent className="flex h-[min(92vh,880px)] w-[calc(100vw-1.5rem)] max-w-6xl flex-col gap-0 overflow-hidden border-border bg-card p-0 sm:max-w-6xl">
             {viewingProposal && (
               <>
-                <div className="px-6 py-5 border-b bg-gray-50/50 shrink-0">
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        {viewingProposal.project_code && (
-                          <span className="text-xs font-mono font-bold text-[#612cb5] bg-[#612cb5]/10 px-2 py-0.5 rounded border border-[#612cb5]/20">
-                            {viewingProposal.project_code}
-                          </span>
+                {/* Cabeçalho: identidade + resumo rápido */}
+                <div className="shrink-0 border-b border-border/60 bg-gradient-to-br from-[#612cb5]/[0.07] via-card to-card px-5 pb-5 pt-5 sm:px-6">
+                  <div className="flex flex-col gap-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {viewingProposal.project_code && (
+                            <span className="inline-flex items-center rounded-md border border-[#612cb5]/25 bg-[#612cb5]/10 px-2.5 py-0.5 font-mono text-xs font-bold text-[#612cb5]">
+                              {viewingProposal.project_code}
+                            </span>
+                          )}
+                          <StatusBadge status={viewingProposal.status} />
+                        </div>
+                        <DialogTitle className="text-left text-xl font-bold leading-snug tracking-tight text-[#612cb5] sm:text-2xl">
+                          {viewingProposal.title}
+                        </DialogTitle>
+                        {viewingProposal.tags && viewingProposal.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 pt-0.5">
+                            {viewingProposal.tags.map((tag, idx) => (
+                              <Badge key={idx} className={cn('text-[10px] font-medium', getTagColor(tag))}>
+                                {tag}
+                              </Badge>
+                            ))}
+                          </div>
                         )}
-                        <DialogTitle className="text-2xl font-bold text-[#612cb5] leading-none">{viewingProposal.title}</DialogTitle>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <StatusBadge status={viewingProposal.status} />
-                        {viewingProposal.tags && viewingProposal.tags.map((tag, idx) => (
-                          <Badge key={idx} className={`text-[10px] ${getTagColor(tag)}`}>{tag}</Badge>
-                        ))}
                       </div>
                     </div>
-                  </div>
 
-                  <div className="flex gap-12 text-sm border-t pt-4 mt-2 border-gray-200">
-                    <div className="flex flex-col">
-                      <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider mb-1">Data de Entrada</span>
-                      <span className="font-semibold text-gray-800 text-base">{format(new Date(viewingProposal.entry_date), "dd/MM/yyyy 'às' HH:mm")}</span>
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider mb-1">Prazo de Entrega</span>
-                      <span className={`font-semibold text-base ${viewingProposal.deadline && new Date(viewingProposal.deadline) < new Date() && viewingProposal.status !== 'delivered' ? 'text-red-600' : 'text-gray-800'}`}>
-                        {viewingProposal.deadline ? format(new Date(viewingProposal.deadline), "dd/MM/yyyy") : 'N/A'}
-                      </span>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div className="flex gap-3 rounded-xl border border-border/70 bg-background/90 p-3 shadow-sm backdrop-blur-sm">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#612cb5]/12 text-[#612cb5]">
+                          <CalendarDays className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Entrada</p>
+                          <p className="text-sm font-semibold text-foreground">
+                            {format(new Date(viewingProposal.entry_date), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-3 rounded-xl border border-border/70 bg-background/90 p-3 shadow-sm backdrop-blur-sm">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/12 text-amber-700 dark:text-amber-400">
+                          <CalendarClock className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Prazo</p>
+                          <p
+                            className={cn(
+                              'text-sm font-semibold',
+                              viewingProposal.deadline &&
+                                new Date(viewingProposal.deadline) < new Date() &&
+                                viewingProposal.status !== 'delivered'
+                                ? 'text-destructive'
+                                : 'text-foreground'
+                            )}
+                          >
+                            {viewingProposal.deadline
+                              ? format(new Date(viewingProposal.deadline), 'dd/MM/yyyy', { locale: ptBR })
+                              : '—'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-3 rounded-xl border border-border/70 bg-background/90 p-3 shadow-sm backdrop-blur-sm sm:col-span-1">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-600/12 text-emerald-700 dark:text-emerald-400">
+                          <User className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Responsável</p>
+                          <p className="truncate text-sm font-semibold text-foreground">
+                            {String(viewingProposal.owner ?? '').trim() || 'Não definido'}
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-6">
-                  {/* Lead Time Metrics Grid (Carregado via Logs) */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                    {isLoadingLogs ? (
-                      <div className="col-span-4 text-center py-4 text-muted-foreground text-sm animate-pulse">Carregando histórico...</div>
-                    ) : (
-                      getProposalMetricsFromLogs(viewingProposal, viewingProposalLogs).map((metric, idx) => (
-                        <div key={idx} className={`border rounded-xl p-3 flex flex-col items-center text-center shadow-sm ${metric.valid ? metric.color : 'bg-gray-50 text-gray-400 border-gray-100'}`}>
-                          <span className="text-[10px] uppercase tracking-wider font-bold mb-1 opacity-80">{metric.label}</span>
-                          {metric.valid ? (
-                            renderMetricValue(metric.minutes)
-                          ) : (
-                            <span className="text-lg font-mono text-gray-300">--</span>
-                          )}
-                          <span className="text-[10px] text-gray-500 font-medium mt-1 uppercase tracking-tight">{metric.subtitle}</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* Left Column: Proposal Details */}
-                    <div className="lg:col-span-2 space-y-6">
-                      <div className="space-y-4">
-                        <div>
-                          <h4 className="flex items-center gap-2 font-semibold text-gray-900 mb-2">
-                            <FileText className="w-4 h-4 text-[#612cb5]" /> Descrição
-                          </h4>
-                          <div className="bg-gray-50 p-4 rounded-lg border text-sm text-gray-700 whitespace-pre-wrap break-words leading-relaxed">
-                            {viewingProposal.description || "Sem descrição."}
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  <div className="space-y-8 px-5 py-6 sm:px-6">
+                    {/* Indicadores (contexto operacional primeiro) */}
+                    <section className="space-y-3" aria-labelledby="proposal-lead-heading">
+                      <h3 id="proposal-lead-heading" className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#612cb5]/10 text-[#612cb5]">
+                          <BarChart3 className="h-4 w-4" />
+                        </span>
+                        Indicadores de lead time
+                      </h3>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        {isLoadingLogs ? (
+                          <div className="col-span-full rounded-xl border border-dashed py-8 text-center text-sm text-muted-foreground animate-pulse">
+                            Carregando histórico…
                           </div>
-                        </div>
+                        ) : (
+                          getProposalMetricsFromLogs(viewingProposal, viewingProposalLogs).map((metric, idx) => (
+                            <div
+                              key={idx}
+                              className={cn(
+                                'flex min-h-[112px] flex-col justify-center rounded-xl border p-4 text-center shadow-sm transition-colors',
+                                metric.valid ? metric.color : 'border-border/60 bg-muted/30 text-muted-foreground'
+                              )}
+                            >
+                              <span className="mb-1 text-[10px] font-bold uppercase tracking-wider opacity-90">{metric.label}</span>
+                              {metric.valid ? (
+                                renderMetricValue(metric.minutes)
+                              ) : (
+                                <span className="text-2xl font-mono text-muted-foreground/40">—</span>
+                              )}
+                              <span className="mt-2 text-[10px] font-medium uppercase tracking-tight text-muted-foreground/90">
+                                {metric.subtitle}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </section>
+
+                    <div className="grid grid-cols-1 gap-8 xl:grid-cols-[minmax(0,1fr)_300px] xl:items-start xl:gap-10">
+                      {/* Coluna principal: narrativa da proposta */}
+                      <div className="min-w-0 space-y-8">
+                        <section className="space-y-3" aria-labelledby="proposal-about-heading">
+                          <h3 id="proposal-about-heading" className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#612cb5]/10 text-[#612cb5]">
+                              <FileText className="h-4 w-4" />
+                            </span>
+                            Sobre a solicitação
+                          </h3>
+                          <div className="rounded-2xl border border-border/60 bg-muted/20 p-5 text-sm leading-relaxed text-foreground shadow-sm">
+                            <p className="whitespace-pre-wrap break-words">
+                              {viewingProposal.description?.trim() ? viewingProposal.description : 'Sem descrição cadastrada.'}
+                            </p>
+                          </div>
+                        </section>
+
+                        <section className="space-y-4" aria-labelledby="proposal-context-heading">
+                          <h3 id="proposal-context-heading" className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#612cb5]/10 text-[#612cb5]">
+                              <Layers className="h-4 w-4" />
+                            </span>
+                            Contexto comercial
+                          </h3>
+                          <div className="rounded-2xl border border-border/60 bg-card p-5 shadow-sm">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Segmento</p>
+                            <p className="mt-1 text-sm font-medium text-foreground">
+                              {String(viewingProposal.segment ?? '').trim() || (
+                                <span className="font-normal text-muted-foreground">Não informado</span>
+                              )}
+                            </p>
+                          </div>
+                          <div className="space-y-4 rounded-2xl border border-border/60 bg-card p-5 shadow-sm">
+                            <div>
+                              <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                <ListChecks className="h-3.5 w-3.5" />
+                                Necessidades
+                              </p>
+                              <p className="mt-2 text-sm leading-relaxed text-foreground whitespace-pre-wrap break-words">
+                                {String(viewingProposal.needs ?? '').trim() || (
+                                  <span className="text-muted-foreground">Não informado</span>
+                                )}
+                              </p>
+                            </div>
+                            <div className="border-t border-border/50 pt-4">
+                              <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                <ClipboardList className="h-3.5 w-3.5" />
+                                Análise de necessidades
+                              </p>
+                              <p className="mt-2 text-sm leading-relaxed text-foreground whitespace-pre-wrap break-words">
+                                {String(viewingProposal.analysis ?? '').trim() || (
+                                  <span className="text-muted-foreground">Não informado</span>
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                        </section>
 
                         {(viewingProposal.pre_analysis || viewingProposal.pre_proposal) && (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {viewingProposal.pre_analysis && (
-                              <div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100">
-                                <h5 className="font-semibold text-xs text-blue-700 uppercase mb-1">Pré-Análise</h5>
-                                <p className="text-sm text-gray-700">{viewingProposal.pre_analysis}</p>
-                              </div>
-                            )}
-                            {viewingProposal.pre_proposal && (
-                              <div className="bg-purple-50/50 p-3 rounded-lg border border-purple-100">
-                                <h5 className="font-semibold text-xs text-purple-700 uppercase mb-1">Pré-Proposta</h5>
-                                <p className="text-sm text-gray-700">{viewingProposal.pre_proposal}</p>
-                              </div>
-                            )}
-                          </div>
+                          <section className="space-y-3" aria-labelledby="proposal-docs-heading">
+                            <h3 id="proposal-docs-heading" className="text-sm font-semibold text-foreground">
+                              Documentação complementar
+                            </h3>
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                              {viewingProposal.pre_analysis && (
+                                <div className="rounded-2xl border border-blue-200/80 bg-blue-50/60 p-4 dark:border-blue-900/50 dark:bg-blue-950/30">
+                                  <h5 className="mb-2 text-xs font-bold uppercase tracking-wide text-blue-800 dark:text-blue-300">
+                                    Pré-análise
+                                  </h5>
+                                  <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap break-words">
+                                    {viewingProposal.pre_analysis}
+                                  </p>
+                                </div>
+                              )}
+                              {viewingProposal.pre_proposal && (
+                                <div className="rounded-2xl border border-purple-200/80 bg-purple-50/60 p-4 dark:border-purple-900/50 dark:bg-purple-950/30">
+                                  <h5 className="mb-2 text-xs font-bold uppercase tracking-wide text-purple-800 dark:text-purple-300">
+                                    Pré-proposta
+                                  </h5>
+                                  <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap break-words">
+                                    {viewingProposal.pre_proposal}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          </section>
                         )}
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          {/* Links */}
-                          <div className="border rounded-lg p-3">
-                            <h4 className="font-semibold text-xs text-gray-500 uppercase mb-3 flex items-center gap-2">
-                              <LinkIcon className="h-3 w-3" /> Links Externos
-                            </h4>
-                            {viewingProposal.links && viewingProposal.links.length > 0 ? (
-                              <ul className="space-y-2">
-                                {viewingProposal.links.map((link, idx) => (
-                                  <li key={idx} className="flex items-center gap-2">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />
-                                    <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline truncate">
-                                      {link.name}
-                                    </a>
-                                  </li>
-                                ))}
-                              </ul>
-                            ) : <span className="text-xs text-gray-400 italic">Nenhum link.</span>}
+                        <section className="space-y-3" aria-labelledby="proposal-assets-heading">
+                          <h3 id="proposal-assets-heading" className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                              <Paperclip className="h-4 w-4" />
+                            </span>
+                            Links e anexos
+                          </h3>
+                          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div className="rounded-2xl border border-border/60 bg-muted/15 p-4">
+                              <h4 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                                <LinkIcon className="h-3.5 w-3.5" />
+                                Links externos
+                              </h4>
+                              {viewingProposal.links && viewingProposal.links.length > 0 ? (
+                                <ul className="space-y-2.5">
+                                  {viewingProposal.links.map((link, idx) => (
+                                    <li key={idx}>
+                                      <a
+                                        href={link.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="group inline-flex max-w-full items-center gap-2 text-sm font-medium text-[#612cb5] hover:underline"
+                                      >
+                                        <ExternalLink className="h-3.5 w-3.5 shrink-0 opacity-70 group-hover:opacity-100" />
+                                        <span className="truncate">{link.name}</span>
+                                      </a>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="text-sm text-muted-foreground">Nenhum link.</p>
+                              )}
+                            </div>
+                            <div className="rounded-2xl border border-border/60 bg-muted/15 p-4">
+                              <h4 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                                <Paperclip className="h-3.5 w-3.5" />
+                                Anexos
+                              </h4>
+                              {/* @ts-ignore */}
+                              {viewingProposal.attachments && viewingProposal.attachments.length > 0 ? (
+                                <ul className="space-y-2.5">
+                                  {/* @ts-ignore */}
+                                  {viewingProposal.attachments.map((att, idx) => (
+                                    <li key={idx}>
+                                      <a
+                                        href={att.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="group inline-flex max-w-full items-center gap-2 text-sm text-foreground hover:text-[#612cb5] hover:underline"
+                                      >
+                                        <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                        <span className="truncate">{att.name}</span>
+                                      </a>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="text-sm text-muted-foreground">Nenhum anexo.</p>
+                              )}
+                            </div>
                           </div>
+                        </section>
+                      </div>
 
-                          {/* Attachments */}
-                          <div className="border rounded-lg p-3">
-                            <h4 className="font-semibold text-xs text-gray-500 uppercase mb-3 flex items-center gap-2">
-                              <Paperclip className="h-3 w-3" /> Anexos
-                            </h4>
-                            {/* @ts-ignore */}
-                            {viewingProposal.attachments && viewingProposal.attachments.length > 0 ? (
-                              <ul className="space-y-2">
-                                {/* @ts-ignore */}
-                                {viewingProposal.attachments.map((att, idx) => (
-                                  <li key={idx} className="flex items-center gap-2">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-orange-400" />
-                                    <a href={att.url} target="_blank" rel="noopener noreferrer" className="text-sm text-gray-700 hover:underline truncate">
-                                      {att.name}
-                                    </a>
-                                  </li>
-                                ))}
-                              </ul>
-                            ) : <span className="text-xs text-gray-400 italic">Nenhum anexo.</span>}
+                      {/* Linha do tempo: painel lateral no desktop */}
+                      <aside className="min-w-0 xl:sticky xl:top-4 xl:self-start">
+                        <div className="rounded-2xl border border-border/60 bg-muted/20 p-5 shadow-sm">
+                          <h4 className="mb-5 flex items-center gap-2 border-b border-border/50 pb-3 text-sm font-semibold text-foreground">
+                            <History className="h-4 w-4 text-[#612cb5]" />
+                            Linha do tempo
+                          </h4>
+                          <div className="space-y-0">
+                            {(() => {
+                              const isDirect = isDirectContractFlow(viewingProposal);
+                              return (
+                                <>
+                                  <TimelineStep
+                                    label="Solicitação recebida"
+                                    date={isDirect ? null : viewingProposal.entry_date}
+                                    icon={Clock}
+                                  />
+                                  <TimelineStep
+                                    label="Em construção"
+                                    date={isDirect ? null : getTimestampFromLogs('construction', viewingProposalLogs)}
+                                    icon={Hammer}
+                                  />
+                                  <TimelineStep
+                                    label="Proposta enviada"
+                                    date={isDirect ? null : getTimestampFromLogs('delivered', viewingProposalLogs)}
+                                    icon={ArrowRight}
+                                  />
+                                </>
+                              );
+                            })()}
+                            <TimelineStep
+                              label="Aguard. assinatura"
+                              date={getTimestampFromLogs('awaiting_contract', viewingProposalLogs)}
+                              icon={PenTool}
+                            />
+                            <TimelineStep
+                              label="Start operacional"
+                              date={getTimestampFromLogs('operational_start', viewingProposalLogs)}
+                              icon={CheckCircle2}
+                            />
+                            <TimelineStep
+                              label="Encaminhado p/ execução"
+                              date={getTimestampFromLogs('execution_forwarded', viewingProposalLogs)}
+                              icon={CalendarClock}
+                              isLast={true}
+                            />
                           </div>
                         </div>
-                      </div>
-                    </div>
-
-                    {/* Right Column: Timeline */}
-                    <div className="lg:border-l lg:pl-8">
-                      <h4 className="font-semibold text-gray-900 mb-6 flex items-center gap-2">
-                        <History className="w-4 h-4 text-[#612cb5]" /> Linha do Tempo
-                      </h4>
-                      <div className="space-y-0">
-                        {(() => {
-                          const isDirect = isDirectContractFlow(viewingProposal);
-
-                          return (
-                            <>
-                              <TimelineStep
-                                label="Solicitação Recebida"
-                                date={isDirect ? null : viewingProposal.entry_date}
-                                icon={Clock}
-                              />
-
-                              {/* REMOVIDO: Código Gerado (Novo) step */}
-
-                              <TimelineStep
-                                label="Em Construção"
-                                date={isDirect ? null : getTimestampFromLogs('construction', viewingProposalLogs)}
-                                icon={Hammer}
-                              />
-
-                              <TimelineStep
-                                label="Proposta Enviada"
-                                date={isDirect ? null : getTimestampFromLogs('delivered', viewingProposalLogs)}
-                                icon={ArrowRight}
-                              />
-                            </>
-                          )
-                        })()}
-
-                        <TimelineStep
-                          label="Aguard. Assinatura"
-                          date={getTimestampFromLogs('awaiting_contract', viewingProposalLogs)}
-                          icon={PenTool}
-                        />
-
-                        <TimelineStep
-                          label="Start Operacional"
-                          date={getTimestampFromLogs('operational_start', viewingProposalLogs)}
-                          icon={CheckCircle2}
-                        />
-
-                        <TimelineStep
-                          label="Encaminhado p/ Execução"
-                          date={getTimestampFromLogs('execution_forwarded', viewingProposalLogs)}
-                          icon={CalendarClock}
-                          isLast={true}
-                        />
-                      </div>
+                      </aside>
                     </div>
                   </div>
                 </div>
 
-                <div className="p-4 border-t bg-gray-50 flex justify-end gap-3 shrink-0">
-                  <Button variant="outline" onClick={() => setViewingProposal(null)}>Fechar</Button>
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border/60 bg-muted/25 px-5 py-4 sm:px-6">
+                  <Button variant="outline" onClick={() => setViewingProposal(null)}>
+                    Fechar
+                  </Button>
                   {!isAccountManager && !LOCKED_STATUSES.includes(viewingProposal.status) && (
-                    <Button onClick={() => { setViewingProposal(null); if (viewingProposal) openEdit(viewingProposal); }} className="bg-[#612cb5] text-white">
-                      Editar Proposta
+                    <Button
+                      onClick={() => {
+                        setViewingProposal(null);
+                        if (viewingProposal) openEdit(viewingProposal);
+                      }}
+                      className="bg-[#612cb5] text-white hover:bg-[#502495]"
+                    >
+                      <Edit className="mr-2 h-4 w-4" />
+                      Editar proposta
                     </Button>
                   )}
                 </div>
@@ -1526,8 +1707,24 @@ export default function Proposals() {
                   <Input id="edit-deadline" type="date" value={formData.deadline} onChange={e => setFormData({ ...formData, deadline: e.target.value })} className="input-enhanced" />
                 </div>
                 <div className="space-y-2">
+                  <Label htmlFor="edit-owner">Responsável pela solicitação</Label>
+                  <Input id="edit-owner" value={formData.owner} onChange={e => setFormData({ ...formData, owner: e.target.value })} className="input-enhanced" placeholder="Nome do responsável" disabled={String(editingProposal?.owner ?? '').trim().length > 0} />
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="edit-description">Descrição</Label>
                   <Textarea id="edit-description" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} className="input-enhanced min-h-[80px]" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-segment">Segmento</Label>
+                  <Input id="edit-segment" value={formData.segment} onChange={e => setFormData({ ...formData, segment: e.target.value })} className="input-enhanced" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-needs">Necessidades</Label>
+                  <Textarea id="edit-needs" value={formData.needs} onChange={e => setFormData({ ...formData, needs: e.target.value })} className="input-enhanced min-h-[72px]" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-analysis">Análise de Necessidades</Label>
+                  <Textarea id="edit-analysis" value={formData.analysis} onChange={e => setFormData({ ...formData, analysis: e.target.value })} className="input-enhanced min-h-[72px]" />
                 </div>
 
                 <div className="space-y-2 bg-secondary/20 p-3 rounded-lg border border-border/50">

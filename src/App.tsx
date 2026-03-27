@@ -16,6 +16,7 @@ import AccessControl from "./pages/AccessControl";
 import Audit from "./pages/Audit";
 import NotFound from "./pages/NotFound";
 import ProjectCodes from "./pages/ProjectCodes";
+import ProposalReports from "./pages/ProposalReports";
 
 const queryClient = new QueryClient();
 
@@ -58,6 +59,7 @@ function AppRoutes() {
       <Route path="/auth" element={user ? <Navigate to="/" replace /> : <Auth />} />
       <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/proposals" element={<ProtectedRoute><Proposals /></ProtectedRoute>} />
+      <Route path="/reports" element={<ProtectedRoute><ProposalReports /></ProtectedRoute>} />
       <Route path="/project-codes" element={<ProtectedRoute><ProjectCodes /></ProtectedRoute>} />
       {/* ROTA OKR REMOVIDA */}
       <Route path="/requests" element={<ProtectedRoute><Requests /></ProtectedRoute>} />

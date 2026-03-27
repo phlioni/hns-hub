@@ -9,7 +9,7 @@ const corsHeaders = {
 
 // --- FUNÇÃO AUXILIAR PARA GERAR PREFIXO ---
 function generatePrefix(name: string): string {
-    if (!name) return 'UNK';
+    if (!name) return 'UNK'; 
     const cleanName = name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
     if (cleanName.length < 3) return cleanName.padEnd(3, 'X');
 
@@ -17,7 +17,7 @@ function generatePrefix(name: string): string {
     const rest = cleanName.slice(1);
     const consonants = rest.replace(/[AEIOU]/g, '');
     const code = (firstLetter + consonants).slice(0, 3);
-
+    
     if (code.length < 3) {
         return cleanName.slice(0, 3).padEnd(3, 'X');
     }
@@ -48,7 +48,7 @@ serve(async (req) => {
 
         console.log(`Recebido type: ${type}`);
         if (data) {
-            console.log(`Dados recebidos - Client: ${data.client}, Reason: ${data.reason}, Code: ${data.project_code}`);
+             console.log(`Dados recebidos - Client: ${data.client}, Reason: ${data.reason}, Code: ${data.project_code}`);
         }
 
         if (!type || !data) {
@@ -58,7 +58,8 @@ serve(async (req) => {
         let result;
 
         if (type === 'proposal') {
-            const { id, title, description, attachments, status, deadline, project_code, justification, idemail, client, reason } = data
+            // Adicionado segment, needs e analysis na desestruturação abaixo
+            const { id, title, description, attachments, status, deadline, project_code, justification, idemail, client, reason, owner, segment, needs, analysis } = data
 
             const extractedTags = title ? extractTags(title) : [];
 
@@ -69,27 +70,31 @@ serve(async (req) => {
                 const { error: fetchError } = await supabase
                     .from('proposals').select('status, title').eq('id', id).single();
                 if (fetchError) throw new Error(`Proposal not found: ${fetchError.message}`);
-
+                
                 const updatePayload: any = { updated_at: new Date().toISOString() };
-
+                
                 if (project_code) updatePayload.project_code = project_code;
                 if (status) updatePayload.status = status;
-
+                if (owner !== undefined) updatePayload.owner = owner; 
+                if (segment !== undefined) updatePayload.segment = segment; // <-- Novo campo
+                if (needs !== undefined) updatePayload.needs = needs;       // <-- Novo campo
+                if (analysis !== undefined) updatePayload.analysis = analysis; // <-- Novo campo
+                
                 if (title) {
                     updatePayload.title = title;
                     updatePayload.tags = extractedTags;
                 }
-
+                
                 result = await supabase.from('proposals').update(updatePayload).eq('id', id).select().single();
                 if (result.error) throw result.error;
-
+                
                 await supabase.from('audit_logs').insert({
-                    action: 'edited',
-                    entity_type: 'proposal',
-                    entity_id: id,
-                    user_email: 'API Integration',
-                    new_status: result.data.status,
-                    metadata: { entity_title: result.data.title, tags_extracted: extractedTags }
+                      action: 'edited', 
+                      entity_type: 'proposal', 
+                      entity_id: id, 
+                      user_email: 'API Integration',
+                      new_status: result.data.status,
+                      metadata: { entity_title: result.data.title, tags_extracted: extractedTags }
                 });
             }
             // =================================================================================
@@ -99,7 +104,7 @@ serve(async (req) => {
                 // --- NOVA LÓGICA DE MATCH POR PROJECT_CODE ---
                 if (project_code) {
                     console.log(`Buscando proposta existente com project_code: ${project_code}`);
-
+                    
                     const { data: existingProposal } = await supabase
                         .from('proposals')
                         .select('id, title, status')
@@ -108,9 +113,14 @@ serve(async (req) => {
 
                     if (existingProposal) {
                         console.log(`Match encontrado! Atualizando proposta ID: ${existingProposal.id}`);
-
+                        
                         const updatePayload: any = { updated_at: new Date().toISOString() };
                         if (status) updatePayload.status = status;
+                        if (owner !== undefined) updatePayload.owner = owner; 
+                        if (segment !== undefined) updatePayload.segment = segment; // <-- Novo campo no match
+                        if (needs !== undefined) updatePayload.needs = needs;       // <-- Novo campo no match
+                        if (analysis !== undefined) updatePayload.analysis = analysis; // <-- Novo campo no match
+                        
                         if (title) {
                             updatePayload.title = title;
                             updatePayload.tags = extractedTags;
@@ -120,9 +130,9 @@ serve(async (req) => {
                         if (result.error) throw result.error;
 
                         await supabase.from('audit_logs').insert({
-                            action: 'edited',
-                            entity_type: 'proposal',
-                            entity_id: existingProposal.id,
+                            action: 'edited', 
+                            entity_type: 'proposal', 
+                            entity_id: existingProposal.id, 
                             user_email: 'API Integration',
                             new_status: result.data.status,
                             metadata: { entity_title: result.data.title, tags_extracted: extractedTags, matched_by: 'project_code' }
@@ -132,23 +142,23 @@ serve(async (req) => {
 
                 // --- SE NÃO ACHOU MATCH (result continua undefined), ENTRA NA CRIAÇÃO ---
                 if (!result) {
-
+                    
                     const finalTitle = title || 'Nova Proposta (Sem Título)';
-                    let initialStatus = status || 'awaiting_code';
+                    let initialStatus = status || 'awaiting_code'; 
 
                     if (extractedTags.includes('OPERAÇÕES')) {
                         console.log("Tag [OPERAÇÕES] detectada. Forçando status para 'execution_forwarded'.");
                         initialStatus = 'execution_forwarded';
                     }
 
-                    let finalProjectCode = project_code;
+                    let finalProjectCode = project_code; 
 
                     if (!finalProjectCode && client) {
                         console.log("Iniciando geração de código automático...");
 
                         try {
-                            let prefix = generatePrefix(client);
-
+                            let prefix = generatePrefix(client); 
+                            
                             const { data: existingClientData } = await supabase
                                 .from('client_codes')
                                 .select('code_prefix')
@@ -161,13 +171,13 @@ serve(async (req) => {
                                 prefix = existingClientData.code_prefix;
                             }
 
-                            const currentYear = new Date().getFullYear().toString().slice(-2);
-
+                            const currentYear = new Date().getFullYear().toString().slice(-2); 
+                            
                             const { data: lastEntry, error: codeError } = await supabase
                                 .from('client_codes')
                                 .select('sequence_number')
                                 .eq('code_prefix', prefix)
-                                .order('sequence_number', { ascending: false })
+                                .order('sequence_number', { ascending: false }) 
                                 .limit(1)
                                 .maybeSingle();
 
@@ -183,7 +193,7 @@ serve(async (req) => {
 
                             const { error: insertCodeError } = await supabase.from('client_codes').insert({
                                 client_name: client,
-                                project_code: finalProjectCode,
+                                project_code: finalProjectCode, 
                                 code_prefix: prefix,
                                 code_year: currentYear,
                                 sequence_number: nextSequence,
@@ -197,7 +207,7 @@ serve(async (req) => {
 
                         } catch (err) {
                             console.error("Erro no bloco de geração de código:", err);
-                            throw err;
+                            throw err; 
                         }
                     } else {
                         console.log("Pulo da geração de código: 'project_code' já existe ou 'client' não informado.");
@@ -219,7 +229,11 @@ serve(async (req) => {
                         idemail: idemail || null,
                         last_justification: justification || "Entrada via automação",
                         entry_date: entryDateObj.toISOString(),
-                        tags: extractedTags
+                        tags: extractedTags,
+                        owner: owner || null,
+                        segment: segment || null,      // <-- Inserido na criação
+                        needs: needs || null,          // <-- Inserido na criação
+                        analysis: analysis || null     // <-- Inserido na criação
                     };
 
                     console.log(`Inserindo proposta. Tags: ${extractedTags}. Status Final: ${initialStatus}`);
@@ -247,8 +261,8 @@ serve(async (req) => {
             }
 
         } else if (type === 'request') {
-            const { requester_name, description, priority } = data
-            result = await supabase.from('requests').insert({
+             const { requester_name, description, priority } = data
+             result = await supabase.from('requests').insert({
                 requester_name: requester_name || 'Solicitante Anônimo',
                 description: description || 'Sem descrição',
                 priority: priority || 'medium',
@@ -269,7 +283,7 @@ serve(async (req) => {
             status: 200,
         })
 
-    } catch (error) {
+    } catch (error: any) {
         console.error("Erro Geral na API:", error.message);
         return new Response(JSON.stringify({
             success: false,
